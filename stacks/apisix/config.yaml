@@ -1,0 +1,87 @@
+# pxlab reference configuration for Apache APISIX 3.15 - static config (standalone mode: routes live in apisix.yaml).
+# Annotated walkthrough: docs/configs/apisix.md.
+deployment:
+  role: data_plane
+  role_data_plane:
+    config_provider: yaml                 # standalone: apisix.yaml is re-read when it changes (no etcd, no admin API)
+
+apisix:
+  node_listen:
+    - port: 8080
+    - port: 80
+  enable_http2: true                      # (3.9+: apisix-level) h2 on TLS and h2c (prior knowledge) on the plain listeners
+  enable_server_tokens: false
+  proxy_mode: http&stream                 # stream routes (TCP/UDP) need the stream proxy enabled
+  proxy_protocol:
+    listen_http_port: 8082                # extra HTTP listener that accepts PROXY protocol from clients
+    enable_tcp_pp: false
+  stream_proxy:
+    tcp:
+      - 9000
+    udp:
+      - 9001
+  ssl:
+    enable: true
+    listen:
+      - port: 8443
+        enable_http3: true                # HTTP/3 (QUIC) on the same port
+      - port: 8444                        # mTLS: the ssls entry for mtls.lab carries the client CA
+    ssl_protocols: TLSv1.2 TLSv1.3
+    ssl_trusted_certificate: /certs/ca.crt   # verify upstream TLS (tls.lab) against the lab CA
+  control:
+    ip: 0.0.0.0
+    port: 9101                            # control API: /v1/routes, /v1/upstreams, /v1/healthcheck ...
+
+nginx_config:
+  worker_processes: 4
+  error_log: /dev/stderr
+  error_log_level: warn
+  http:
+    access_log: /dev/stdout
+    access_log_format: '{"time":"$time_iso8601","remote_addr":"$remote_addr","method":"$request_method","uri":"$request_uri","host":"$host","status":$status,"bytes":$body_bytes_sent,"request_time":$request_time,"upstream":"$upstream_addr","upstream_time":"$upstream_response_time","cache":"$upstream_cache_status","request_id":"$http_x_request_id","proto":"$server_protocol","ua":"$http_user_agent"}'
+    access_log_format_escape: json
+    keepalive_timeout: 75s
+    keepalive_requests: 10000
+    upstream:
+      keepalive: 320
+      keepalive_requests: 10000
+      keepalive_timeout: 60s
+  http_configuration_snippet: |
+    gzip_vary on;
+  stream:
+    access_log: /dev/stdout
+
+plugins:                                  # the enabled set (replaces the default list)
+  - real-ip
+  - client-control
+  - request-id
+  - fault-injection
+  - serverless-pre-function
+  - serverless-post-function
+  - cors
+  - ip-restriction
+  - basic-auth
+  - jwt-auth
+  - forward-auth
+  - proxy-cache
+  - proxy-mirror
+  - proxy-rewrite
+  - limit-conn
+  - limit-req
+  - gzip
+  - brotli
+  - traffic-split
+  - redirect
+  - response-rewrite
+  - prometheus
+  - opentelemetry
+stream_plugins:
+  - ip-restriction
+  - limit-conn
+
+plugin_attr:
+  prometheus:
+    export_uri: /metrics
+    export_addr:
+      ip: 0.0.0.0
+      port: 9100

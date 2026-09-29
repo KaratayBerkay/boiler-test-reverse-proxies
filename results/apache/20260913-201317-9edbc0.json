@@ -1,0 +1,559 @@
+{
+  "stack": "apache",
+  "display": "Apache httpd 2.4",
+  "image": "httpd:2.4",
+  "family": "c",
+  "category": "the classic modular web server (C) used as a reverse proxy: mod_proxy + balancer + hcheck + cache + md",
+  "run_id": "20260913-201317-9edbc0",
+  "started": "2026-09-13T17:13:17+00:00",
+  "notes": "Official httpd 2.4 image, event MPM sized for 4 cores. Demonstrates mod_proxy (http/h2c/ws/tls upstreams), mod_proxy_balancer (byrequests, bybusyness, loadfactor, stickysession, failonstatus), mod_proxy_hcheck active health checks, mod_cache_disk with CacheStaleOnError, mod_deflate + mod_brotli, mod_ratelimit bandwidth limiting, mod_remoteip PROXY protocol, mod_md ACME against Pebble (activated by a graceful reload from MDMessageCmd), mTLS with SSL_CLIENT_S_DN_CN, mod_unique_id request ids, JSON access log and a Prometheus exporter sidecar. No HTTP/3, no L4, no rate limiting, no JWT/forward auth without third-party modules.",
+  "docs": [
+    "https://hub.docker.com/_/httpd",
+    "https://httpd.apache.org/docs/2.4/mod/mod_proxy.html",
+    "https://httpd.apache.org/docs/2.4/mod/mod_proxy_balancer.html",
+    "https://httpd.apache.org/docs/2.4/mod/mod_md.html",
+    "https://httpd.apache.org/docs/2.4/mod/mod_cache.html"
+  ],
+  "image_size": "175 MB",
+  "startup_s": null,
+  "version": "Server version: Apache/2.4.68 (Unix)",
+  "containers": [
+    "pxlab-apache",
+    "pxlab-apache-exporter"
+  ],
+  "unsupported": {
+    "lb_hash_header": "mod_proxy_balancer has byrequests / bytraffic / bybusyness / heartbeat only - no consistent hashing",
+    "lb_mirror": "no request mirroring in mod_proxy",
+    "proxy_protocol_upstream": "mod_proxy cannot send PROXY protocol to upstreams (mod_remoteip only accepts it)",
+    "tcp_l4": "httpd is HTTP-only (no generic TCP proxying)",
+    "udp_l4": "httpd is HTTP-only",
+    "tls_passthrough_sni": "no L4 passthrough (mod_proxy terminates or re-encrypts TLS)",
+    "http3": "no HTTP/3 in httpd (mod_http2 stops at HTTP/2)",
+    "cache_purge": "mod_cache has no purge API (htcacheclean works offline on the disk cache)",
+    "compress_zstd": "no zstd output filter (mod_deflate = gzip, mod_brotli = br)",
+    "rate_limit": "no request-rate limiting in the standard modules (mod_ratelimit is bandwidth only; mod_qos / mod_evasive are third-party)",
+    "connection_limit": "no per-client concurrency limit in the standard modules (mod_qos is third-party)",
+    "jwt_auth": "JWT validation needs a third-party module (mod_auth_openidc, mod_authnz_jwt)",
+    "forward_auth": "no auth_request-style subrequest to an external authorizer in httpd core",
+    "tracing_otel": "the OpenTelemetry Apache module (otel-webserver-module) is a separate build",
+    "docker_label_discovery": "no Docker provider"
+  },
+  "phases": {
+    "capabilities": {
+      "ready_s": 0.1,
+      "probes": {
+        "route_host": {
+          "detail": "a.lab -> app2 (X-Route=a), b.lab -> b1",
+          "status": "ok",
+          "group": "routing",
+          "title": "Host-based routing",
+          "seconds": 0.01
+        },
+        "route_path_prefix": {
+          "detail": "upstream path=/hello query=x=1 X-Route=api",
+          "status": "ok",
+          "group": "routing",
+          "title": "Path prefix route + strip prefix",
+          "seconds": 0.0
+        },
+        "route_path_regex": {
+          "detail": "path=/v2/things X-Route=versioned",
+          "status": "ok",
+          "group": "routing",
+          "title": "Regex path route",
+          "seconds": 0.0
+        },
+        "route_rewrite": {
+          "detail": "upstream path=/new/thing X-Route=rewritten",
+          "status": "ok",
+          "group": "routing",
+          "title": "URL rewrite (regex capture)",
+          "seconds": 0.0
+        },
+        "route_redirect": {
+          "detail": "200 Location=",
+          "status": "fail",
+          "group": "routing",
+          "title": "Redirect issued by the proxy",
+          "seconds": 0.0
+        },
+        "route_header": {
+          "detail": "instance=canary",
+          "status": "ok",
+          "group": "routing",
+          "title": "Header-based routing",
+          "seconds": 0.0
+        },
+        "route_query": {
+          "detail": "instance=canary",
+          "status": "ok",
+          "group": "routing",
+          "title": "Query-parameter routing",
+          "seconds": 0.0
+        },
+        "route_method": {
+          "detail": "DELETE -> 405 (x-instance=None)",
+          "status": "ok",
+          "group": "routing",
+          "title": "Method-based rule",
+          "seconds": 0.0
+        },
+        "redirect_https": {
+          "detail": "301 Location=https://redirect.lab:18080/x?q=1",
+          "status": "ok",
+          "group": "routing",
+          "title": "HTTP -> HTTPS redirect",
+          "seconds": 0.0
+        },
+        "lb_round_robin": {
+          "detail": {
+            "app1": 10,
+            "app2": 10,
+            "app3": 10
+          },
+          "status": "ok",
+          "group": "load-balancing",
+          "title": "Round-robin over 3 backends",
+          "seconds": 0.06
+        },
+        "lb_weighted": {
+          "detail": "app1 share=0.75 {'app1': 75, 'app2': 25}",
+          "share": 0.75,
+          "status": "ok",
+          "group": "load-balancing",
+          "title": "Weighted round-robin (3:1)",
+          "seconds": 0.27
+        },
+        "lb_least_conn": {
+          "detail": "RemoteProtocolError: Server disconnected without sending a response.",
+          "status": "error",
+          "group": "load-balancing",
+          "title": "Least-connections",
+          "seconds": 0.58
+        },
+        "lb_hash_header": {
+          "status": "unsupported",
+          "detail": "mod_proxy_balancer has byrequests / bytraffic / bybusyness / heartbeat only - no consistent hashing",
+          "group": "load-balancing",
+          "title": "Consistent hashing on a header",
+          "seconds": 0
+        },
+        "lb_sticky_cookie": {
+          "detail": "cookie='lab_sticky=.a1; path=/; HttpOnly' first=app1 then={'app1': 12}",
+          "status": "ok",
+          "group": "load-balancing",
+          "title": "Cookie stickiness",
+          "seconds": 0.04
+        },
+        "lb_retry_dead_member": {
+          "detail": "codes={200: 30} max_ms=5",
+          "max_ms": 5.1,
+          "status": "ok",
+          "group": "load-balancing",
+          "title": "Retry on connect failure",
+          "seconds": 0.08
+        },
+        "lb_outlier_ejection": {
+          "detail": "first20={200: 19, 500: 1} last20={200: 40} flaky hits in last 20=0",
+          "errors_first20": 1,
+          "errors_last20": -20,
+          "flaky_hits_last20": 0,
+          "status": "ok",
+          "group": "load-balancing",
+          "title": "Passive health / outlier ejection",
+          "seconds": 1.57
+        },
+        "lb_active_health": {
+          "detail": "while unhealthy: {'app1': 10, 'app2': 10, 'app3': 10} app3 hits=10; re-admitted after 0.0s",
+          "readmit_s": 0.0,
+          "status": "fail",
+          "group": "load-balancing",
+          "title": "Active health checks",
+          "seconds": 5.26
+        },
+        "lb_canary_split": {
+          "detail": "canary share=0.100 {'app1': 60, 'app2': 60, 'app3': 60, 'canary': 20}",
+          "share": 0.1,
+          "status": "ok",
+          "group": "load-balancing",
+          "title": "Weighted traffic split (canary)",
+          "seconds": 0.43
+        },
+        "lb_mirror": {
+          "status": "unsupported",
+          "detail": "no request mirroring in mod_proxy",
+          "group": "load-balancing",
+          "title": "Request mirroring / shadowing",
+          "seconds": 0
+        },
+        "lb_upstream_keepalive": {
+          "detail": "new upstream connections for 60 requests: {'app2': 1, 'app1': 2, 'app3': 2}",
+          "upstream_connections": 5,
+          "status": "ok",
+          "group": "load-balancing",
+          "title": "Upstream connection pooling",
+          "seconds": 0.36
+        },
+        "http2_tls": {
+          "detail": "HTTP/2 200 upstream proto=HTTP/1.1",
+          "status": "ok",
+          "group": "protocols",
+          "title": "HTTP/2 (TLS, ALPN)",
+          "seconds": 0.01
+        },
+        "h2c_frontend": {
+          "detail": "status=200 body=b'{\\n \"instance\": \"app2\",\\n \"pool\": \"app\",\\n '",
+          "status": "ok",
+          "group": "protocols",
+          "title": "HTTP/2 cleartext (prior knowledge) on :8080",
+          "seconds": 0.0
+        },
+        "http3": {
+          "status": "unsupported",
+          "detail": "no HTTP/3 in httpd (mod_http2 stops at HTTP/2)",
+          "group": "protocols",
+          "title": "HTTP/3 (QUIC)",
+          "seconds": 0
+        },
+        "websocket": {
+          "detail": "text echo='hello' binary 4096=4096 instance=app1",
+          "status": "ok",
+          "group": "protocols",
+          "title": "WebSocket proxying",
+          "seconds": 0.02
+        },
+        "sse_streaming": {
+          "detail": "events=5 first=0.0s total=1.23s",
+          "status": "ok",
+          "group": "protocols",
+          "title": "Server-sent events (no response buffering)",
+          "seconds": 1.23
+        },
+        "grpc": {
+          "detail": "tls:8443: SERVING",
+          "via": "tls:8443",
+          "status": "ok",
+          "group": "protocols",
+          "title": "gRPC proxying (h2 -> upstream h2c :9090)",
+          "seconds": 0.1
+        },
+        "h2_upstream": {
+          "detail": "upstream proto=HTTP/2.0",
+          "status": "ok",
+          "group": "protocols",
+          "title": "HTTP/2 to the upstream (h2c)",
+          "seconds": 0.0
+        },
+        "tls_upstream": {
+          "detail": "RuntimeError: GET tls.lab/ -> 500: '<!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 4.01//EN\" \"http://www.w3.org/TR/html4/strict.dtd\">\\n<html><head>\\n<title>500 Proxy'",
+          "status": "error",
+          "group": "protocols",
+          "title": "TLS re-encryption to the upstream (verified)",
+          "seconds": 0.01
+        },
+        "proxy_protocol_upstream": {
+          "status": "unsupported",
+          "detail": "mod_proxy cannot send PROXY protocol to upstreams (mod_remoteip only accepts it)",
+          "group": "protocols",
+          "title": "PROXY protocol v2 to the upstream",
+          "seconds": 0
+        },
+        "proxy_protocol_accept": {
+          "detail": "X-Forwarded-For=203.0.113.9 remote_addr=10.77.0.2:44938",
+          "status": "ok",
+          "group": "protocols",
+          "title": "Accept PROXY protocol from clients (:8082)",
+          "seconds": 0.0
+        },
+        "tcp_l4": {
+          "status": "unsupported",
+          "detail": "httpd is HTTP-only (no generic TCP proxying)",
+          "group": "protocols",
+          "title": "TCP (L4) proxying",
+          "seconds": 0
+        },
+        "udp_l4": {
+          "status": "unsupported",
+          "detail": "httpd is HTTP-only",
+          "group": "protocols",
+          "title": "UDP proxying",
+          "seconds": 0
+        },
+        "tls_passthrough_sni": {
+          "status": "unsupported",
+          "detail": "no L4 passthrough (mod_proxy terminates or re-encrypts TLS)",
+          "group": "protocols",
+          "title": "TLS passthrough by SNI (L4)",
+          "seconds": 0
+        },
+        "tls_termination": {
+          "detail": "200 cert=CN = app.lab, O = pxlab TLSv1.3 X-Forwarded-Proto=https",
+          "status": "ok",
+          "group": "tls",
+          "title": "TLS termination",
+          "seconds": 0.04
+        },
+        "tls13": {
+          "detail": "TLSv1.3 TLS_AES_256_GCM_SHA384",
+          "status": "ok",
+          "group": "tls",
+          "title": "TLS 1.3 negotiated",
+          "seconds": 0.0
+        },
+        "tls_legacy_refused": {
+          "detail": "8067D6B0CD7B0000:error:0A00042E:SSL routines:ssl3_read_bytes:tlsv1 alert protocol version:../ssl/record/rec_layer_s3.c:918:SSL alert number 70\nProtocol: TLSv1.1\n    Protocol  : TLSv1.1",
+          "status": "ok",
+          "group": "tls",
+          "title": "TLS 1.0/1.1 refused",
+          "seconds": 0.48
+        },
+        "mtls_client_cert": {
+          "detail": "without cert: ReadError: [SSL: TLSV13_ALERT_CERTIFICATE_REQUIRED] tlsv13 alert certificate req; with cert: 200; forwarded: {'X-Client-Cert-Cn': 'lab-client', 'X-Client-Cert-Verify': 'SUCCESS'}",
+          "cert_headers": {
+            "X-Client-Cert-Cn": "lab-client",
+            "X-Client-Cert-Verify": "SUCCESS"
+          },
+          "status": "ok",
+          "group": "tls",
+          "title": "Mutual TLS (client certificate required)",
+          "seconds": 0.02
+        },
+        "sni_multi_cert": {
+          "detail": "app.lab -> CN = app.lab, O = pxlab; b.lab -> CN = b.lab, O = pxlab",
+          "status": "ok",
+          "group": "tls",
+          "title": "Multiple certificates selected by SNI",
+          "seconds": 0.08
+        },
+        "acme_auto_cert": {
+          "detail": "subject=CN = Apache Managed Domain Fallback issuer=CN = Apache Managed Domain Fallback sans=DNS:acme.lab",
+          "status": "fail",
+          "group": "tls",
+          "title": "Automatic certificate via ACME (Pebble)",
+          "seconds": 91.34
+        },
+        "cache_hit": {
+          "detail": "origin app1#1 -> app2#1; X-Cache: MISS from app.lab -> MISS from app.lab age=None",
+          "status": "fail",
+          "group": "caching",
+          "title": "Response caching",
+          "seconds": 0.01
+        },
+        "cache_purge": {
+          "status": "unsupported",
+          "detail": "mod_cache has no purge API (htcacheclean works offline on the disk cache)",
+          "group": "caching",
+          "title": "Cache purge",
+          "seconds": 0
+        },
+        "cache_stale_on_error": {
+          "detail": "first 200 origin=app3#1; after expiry with origin 503: 503 origin=app1#None X-Cache=MISS from app.lab",
+          "status": "fail",
+          "group": "caching",
+          "title": "Serve stale on upstream error",
+          "seconds": 2.61
+        },
+        "compress_gzip": {
+          "detail": "Content-Encoding=gzip 365 bytes (65536 uncompressed)",
+          "bytes": 365,
+          "status": "ok",
+          "group": "compression",
+          "title": "gzip compression",
+          "seconds": 0.0
+        },
+        "compress_brotli": {
+          "detail": "Content-Encoding=br 98 bytes (65536 uncompressed)",
+          "bytes": 98,
+          "status": "ok",
+          "group": "compression",
+          "title": "Brotli compression",
+          "seconds": 0.0
+        },
+        "compress_zstd": {
+          "status": "unsupported",
+          "detail": "no zstd output filter (mod_deflate = gzip, mod_brotli = br)",
+          "group": "compression",
+          "title": "Zstandard compression",
+          "seconds": 0
+        },
+        "xff_headers": {
+          "detail": "XFF=10.77.0.1 Proto=http Host=app.lab:18080 X-Real-IP=10.77.0.1",
+          "status": "ok",
+          "group": "headers",
+          "title": "X-Forwarded-* headers",
+          "seconds": 0.0
+        },
+        "forwarded_rfc7239": {
+          "detail": "Forwarded='for=10.77.0.1;proto=http;host=app.lab:18080'",
+          "status": "ok",
+          "group": "headers",
+          "title": "RFC 7239 Forwarded header",
+          "seconds": 0.0
+        },
+        "header_add_remove": {
+          "detail": "X-Lab-Proxy=apache X-Powered-By=present Server=lab-backend/1.0",
+          "status": "fail",
+          "group": "headers",
+          "title": "Header manipulation",
+          "seconds": 0.0
+        },
+        "request_id": {
+          "detail": "'aqbaF-l2kbkRs8EM7OgwQwAAAw8' / 'aqbaF-l2kbkRs8EM7OgwRAAAAxM'",
+          "status": "ok",
+          "group": "headers",
+          "title": "Request ID generation",
+          "seconds": 0.0
+        },
+        "rate_limit": {
+          "status": "unsupported",
+          "detail": "no request-rate limiting in the standard modules (mod_ratelimit is bandwidth only; mod_qos / mod_evasive are third-party)",
+          "group": "security",
+          "title": "Request rate limiting",
+          "seconds": 0
+        },
+        "connection_limit": {
+          "status": "unsupported",
+          "detail": "no per-client concurrency limit in the standard modules (mod_qos is third-party)",
+          "group": "security",
+          "title": "Concurrent connection limit",
+          "seconds": 0
+        },
+        "ip_allow_deny": {
+          "detail": "/allowed=200 /denied=403",
+          "status": "ok",
+          "group": "security",
+          "title": "IP allow / deny lists",
+          "seconds": 0.0
+        },
+        "basic_auth": {
+          "detail": "no creds=401 (Basic realm=\"pxlab\") creds=200",
+          "status": "ok",
+          "group": "security",
+          "title": "HTTP basic authentication",
+          "seconds": 0.0
+        },
+        "jwt_auth": {
+          "status": "unsupported",
+          "detail": "JWT validation needs a third-party module (mod_auth_openidc, mod_authnz_jwt)",
+          "group": "security",
+          "title": "JWT validation (HS256)",
+          "seconds": 0
+        },
+        "forward_auth": {
+          "status": "unsupported",
+          "detail": "no auth_request-style subrequest to an external authorizer in httpd core",
+          "group": "security",
+          "title": "External authorization (forward auth / auth_request / ext_authz)",
+          "seconds": 0
+        },
+        "cors": {
+          "detail": "204 ACAO=* methods=GET, POST, PUT, DELETE, OPTIONS",
+          "status": "ok",
+          "group": "security",
+          "title": "CORS preflight answered by the proxy",
+          "seconds": 0.0
+        },
+        "security_headers": {
+          "detail": "{'strict-transport-security': 'max-age=31536000; includeSubDomains', 'x-content-type-options': 'nosniff', 'x-frame-options': 'DENY', 'referrer-policy': 'strict-origin-when-cross-origin'}",
+          "status": "ok",
+          "group": "security",
+          "title": "Security response headers",
+          "seconds": 0.0
+        },
+        "body_size_limit": {
+          "detail": "2MiB=200 100KiB=200",
+          "status": "fail",
+          "group": "security",
+          "title": "Request body size limit",
+          "seconds": 0.02
+        },
+        "upstream_timeout": {
+          "detail": "200 after 5.00s",
+          "seconds": 5.0,
+          "status": "fail",
+          "group": "security",
+          "title": "Upstream read timeout"
+        },
+        "fault_injection": {
+          "detail": "503 share=0.00 codes={200: 100}",
+          "share": 0.0,
+          "status": "fail",
+          "group": "security",
+          "title": "Fault injection",
+          "seconds": 0.17
+        },
+        "bandwidth_limit": {
+          "detail": "200 1048576 bytes in 2.21s (474 KB/s)",
+          "seconds": 2.21,
+          "status": "ok",
+          "group": "security",
+          "title": "Bandwidth limiting"
+        },
+        "static_files": {
+          "detail": "200 '<!doctype html><title>pxlab static</title><p>pxlab static fi' x-instance=None",
+          "status": "ok",
+          "group": "operations",
+          "title": "Static file serving",
+          "seconds": 0.0
+        },
+        "custom_error_page": {
+          "detail": "503 X-Error-Page=custom body='<!doctype html><title>pxlab error</title><h1>Custom error pa'",
+          "status": "ok",
+          "group": "operations",
+          "title": "Custom error page",
+          "seconds": 0.0
+        },
+        "hot_reload": {
+          "detail": "reload rc=0 ''; then 200",
+          "status": "ok",
+          "group": "operations",
+          "title": "Configuration reload without restart",
+          "seconds": 0.17
+        },
+        "access_log_json": {
+          "detail": "json keys: ['bytes', 'cache', 'duration_us', 'host', 'method', 'proto', 'remote_addr', 'request_id', 'status', 'time', 'ua', 'uri']",
+          "status": "ok",
+          "group": "operations",
+          "title": "Structured (JSON) access log",
+          "seconds": 1.54
+        },
+        "metrics_prometheus": {
+          "detail": "200 83 samples e.g. apache_accesses_total 999",
+          "status": "ok",
+          "group": "operations",
+          "title": "Prometheus metrics",
+          "seconds": 0.06
+        },
+        "admin_api": {
+          "detail": "GET /server-status?auto -> 200 '127.0.0.1\\nServerVersion: Apache/2.4.68 (Unix) OpenSSL/3.5.6\\nServerMPM: event\\nSer'",
+          "status": "ok",
+          "group": "operations",
+          "title": "Admin / stats / runtime API",
+          "seconds": 0.05
+        },
+        "tracing_otel": {
+          "status": "unsupported",
+          "detail": "the OpenTelemetry Apache module (otel-webserver-module) is a separate build",
+          "group": "operations",
+          "title": "Distributed tracing (OpenTelemetry -> Jaeger)",
+          "seconds": 0
+        },
+        "docker_label_discovery": {
+          "status": "unsupported",
+          "detail": "no Docker provider",
+          "group": "operations",
+          "title": "Service discovery from Docker labels",
+          "seconds": 0
+        }
+      },
+      "summary": {
+        "ok": 43,
+        "fail": 9,
+        "error": 2,
+        "unsupported": 15
+      },
+      "_seconds": 116.2
+    }
+  },
+  "finished": "2026-09-13T17:15:14+00:00"
+}

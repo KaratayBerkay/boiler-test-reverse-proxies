@@ -1,0 +1,70 @@
+# Kong Gateway OSS 3.9 (official image), DB-less: the whole configuration is kong.yml (generated from kong.src.yml).
+name: pxlab-kong
+services:
+  proxy:
+    image: kong:3.9
+    container_name: pxlab-kong
+    cpuset: "0-3"
+    user: kong
+    environment:
+      KONG_DATABASE: "off"
+      KONG_DECLARATIVE_CONFIG: /kong/kong.yml
+      KONG_ROUTER_FLAVOR: expressions
+      KONG_PROXY_LISTEN: "0.0.0.0:8080 http2 reuseport, 0.0.0.0:80 reuseport, 0.0.0.0:8443 http2 ssl reuseport, 0.0.0.0:8082 proxy_protocol reuseport"
+      KONG_STREAM_LISTEN: "0.0.0.0:9000 reuseport, 0.0.0.0:9001 udp reuseport, 0.0.0.0:8445 ssl reuseport"   # "ssl" = TLS listener: tls routes terminate, tls_passthrough routes preread SNI and pass through
+      KONG_ADMIN_LISTEN: "0.0.0.0:8001 reuseport"
+      KONG_STATUS_LISTEN: "0.0.0.0:9100 reuseport"
+      KONG_ADMIN_GUI_LISTEN: "off"                # Kong Manager defaults to 8002 + 8445 ssl (8445 is our passthrough port)
+      KONG_SSL_CERT: /certs/app.lab.fullchain.crt
+      KONG_SSL_CERT_KEY: /certs/app.lab.key
+      KONG_TRUSTED_IPS: "0.0.0.0/0"
+      KONG_REAL_IP_HEADER: proxy_protocol
+      KONG_REAL_IP_RECURSIVE: "on"
+      KONG_LUA_SSL_TRUSTED_CERTIFICATE: "/certs/pebble-ca.pem,/certs/ca.crt"
+      KONG_NGINX_WORKER_PROCESSES: "4"
+      KONG_UPSTREAM_KEEPALIVE_POOL_SIZE: "512"
+      KONG_UPSTREAM_KEEPALIVE_MAX_REQUESTS: "10000"
+      KONG_NGINX_HTTP_LOG_FORMAT: 'json_lab escape=json ''{"time":"$$time_iso8601","remote_addr":"$$remote_addr","method":"$$request_method","uri":"$$request_uri","host":"$$host","status":$$status,"bytes":$$body_bytes_sent,"request_time":$$request_time,"upstream":"$$upstream_addr","upstream_time":"$$upstream_response_time","request_id":"$$http_x_request_id","proto":"$$server_protocol","ua":"$$http_user_agent"}'''
+      KONG_PROXY_ACCESS_LOG: /dev/stdout json_lab
+      KONG_ADMIN_ACCESS_LOG: /dev/null
+      KONG_PROXY_ERROR_LOG: /dev/stderr
+      KONG_ADMIN_ERROR_LOG: /dev/stderr
+      KONG_LOG_LEVEL: notice
+      KONG_NGINX_PROXY_GZIP: "on"
+      KONG_NGINX_PROXY_GZIP_TYPES: "text/plain text/css application/json application/javascript"
+      KONG_NGINX_PROXY_GZIP_MIN_LENGTH: "256"
+      KONG_NGINX_PROXY_GZIP_PROXIED: any
+      KONG_NGINX_PROXY_GZIP_VARY: "on"
+      KONG_TRACING_INSTRUMENTATIONS: all
+      KONG_TRACING_SAMPLING_RATE: "0.001"
+      KONG_PLUGINS: bundled
+      KONG_UNTRUSTED_LUA: "on"                    # pre/post-function code may use io (static file, error page); "sandbox" would block it
+    volumes:
+      - ./kong.yml:/kong/kong.yml:ro
+      - ../../shared/certs:/certs:ro
+      - ../../shared/static:/static:ro
+    ports:
+      - "18080:8080"
+      - "18443:8443"
+      - "18445:8445"
+      - "18082:8082"
+      - "19000:9000"
+      - "19001:9001/udp"
+      - "19100:9100"
+      - "19101:8001"
+    ulimits:
+      nofile: { soft: 1048576, hard: 1048576 }
+    sysctls:
+      net.ipv4.ip_unprivileged_port_start: 0
+    networks:
+      pxlab:
+        aliases: [proxy, app.lab, a.lab, b.lab, acme.lab, redirect.lab]
+    healthcheck:
+      test: ["CMD", "kong", "health"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+networks:
+  pxlab:
+    external: true
+    name: pxlab

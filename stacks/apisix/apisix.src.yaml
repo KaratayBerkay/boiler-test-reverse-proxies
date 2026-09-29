@@ -1,0 +1,216 @@
+# pxlab reference configuration for Apache APISIX 3.15 - ROUTES (standalone yaml). "file:" placeholders are replaced by
+# gen.py with PEM contents (TLS material must be inline). The file must end with the #END marker.
+upstreams:
+  - id: app
+    type: roundrobin
+    nodes: { "app1:8080": 1, "app2:8080": 1, "app3:8080": 1 }
+    retries: 3
+    timeout: { connect: 3, send: 30, read: 30 }
+    checks:
+      active: { type: http, http_path: /healthz, timeout: 1, healthy: { interval: 2, successes: 2 }, unhealthy: { interval: 2, http_failures: 2, tcp_failures: 2, timeouts: 2 } }
+      passive: { healthy: { successes: 1 }, unhealthy: { http_statuses: [500, 502, 503, 504], http_failures: 5, tcp_failures: 3, timeouts: 3 } }
+  - id: b
+    type: roundrobin
+    nodes: { "b1:8080": 1 }
+  - id: canary
+    type: roundrobin
+    nodes: { "canary:8080": 1 }
+  - id: shadow
+    type: roundrobin
+    nodes: { "shadow:8080": 1 }
+  - id: weighted
+    type: roundrobin
+    nodes: { "app1:8080": 3, "app2:8080": 1 }
+  - id: leastconn
+    type: least_conn
+    nodes: { "app1:8080": 1, "app2:8080": 1, "slow:8080": 1 }
+  - id: hash                                    # consistent hashing on the X-User header
+    type: chash
+    hash_on: header
+    key: x-user
+    nodes: { "app1:8080": 1, "app2:8080": 1, "app3:8080": 1 }
+  - id: retry                                   # dead member: only discovered by connect failures, hidden by retries
+    type: roundrobin
+    retries: 3
+    nodes: { "app1:8080": 1, "app2:8080": 1, "app3:8099": 1 }
+  - id: cb                                      # passive: 3 HTTP failures -> unhealthy; active re-admits it
+    type: roundrobin
+    retries: 3
+    checks:
+      active: { type: http, http_path: /healthz, timeout: 1, healthy: { interval: 5, successes: 2 }, unhealthy: { interval: 5, http_failures: 2 } }
+      passive: { healthy: { successes: 2 }, unhealthy: { http_statuses: [500, 502, 503, 504], http_failures: 3, tcp_failures: 2, timeouts: 2 } }
+    nodes: { "app1:8080": 1, "app2:8080": 1, "flaky:8080": 1 }
+  - id: health                                  # active health checks every second
+    type: roundrobin
+    checks:
+      active: { type: http, http_path: /healthz, timeout: 1, healthy: { interval: 1, successes: 2 }, unhealthy: { interval: 1, http_failures: 2, tcp_failures: 2, timeouts: 2 } }
+    nodes: { "app1:8080": 1, "app2:8080": 1, "app3:8080": 1 }
+  - id: app1
+    type: roundrobin
+    nodes: { "app1:8080": 1 }
+  - id: app2
+    type: roundrobin
+    nodes: { "app2:8080": 1 }
+  - id: app3
+    type: roundrobin
+    nodes: { "app3:8080": 1 }
+  - id: app_t2                                  # 2 s read timeout
+    type: roundrobin
+    retries: 0
+    timeout: { connect: 3, send: 30, read: 2 }
+    nodes: { "app1:8080": 1, "app2:8080": 1, "app3:8080": 1 }
+  - id: app_tls                                 # TLS re-encryption, verified against the lab CA (SNI backend.lab)
+    type: roundrobin
+    scheme: https
+    pass_host: rewrite
+    upstream_host: backend.lab
+    tls: { verify: true }
+    nodes: { "app1:8443": 1 }
+  - id: grpc                                    # gRPC -> h2c upstream
+    type: roundrobin
+    scheme: grpc
+    nodes: { "app1:9090": 1 }
+
+routes:
+  # ------------------------------------------------------------------ host routing (priority 100)
+  - { id: a, hosts: [a.lab], uri: "/*", priority: 100, upstream_id: app, plugins: { proxy-rewrite: { headers: { set: { X-Route: a } } } } }
+  - { id: b, hosts: [b.lab], uri: "/*", priority: 100, upstream_id: b, plugins: { proxy-rewrite: { headers: { set: { X-Route: b } } } } }
+  - { id: redirect, hosts: [redirect.lab], uri: "/*", priority: 100, upstream_id: app, plugins: { redirect: { http_to_https: true, ret_code: 301 } } }
+  - { id: weighted, hosts: [weighted.lab], uri: "/*", priority: 100, upstream_id: weighted }
+  - { id: leastconn, hosts: [leastconn.lab], uri: "/*", priority: 100, upstream_id: leastconn }
+  - { id: hash, hosts: [hash.lab], uri: "/*", priority: 100, upstream_id: hash }
+  - id: sticky                                  # cookie -> exact upstream (traffic-split rules); first visit gets the cookie from the response
+    hosts: [sticky.lab]
+    uri: "/*"
+    priority: 100
+    upstream_id: app
+    plugins:
+      traffic-split:
+        rules:
+          - { match: [{ vars: [["cookie_lab_sticky", "==", "app1"]] }], weighted_upstreams: [{ upstream_id: app1, weight: 1 }] }
+          - { match: [{ vars: [["cookie_lab_sticky", "==", "app2"]] }], weighted_upstreams: [{ upstream_id: app2, weight: 1 }] }
+          - { match: [{ vars: [["cookie_lab_sticky", "==", "app3"]] }], weighted_upstreams: [{ upstream_id: app3, weight: 1 }] }
+      serverless-post-function:
+        phase: header_filter
+        functions:
+          - "return function(conf, ctx) if not ngx.var.cookie_lab_sticky and ngx.header['X-Instance'] then ngx.header['Set-Cookie'] = 'lab_sticky=' .. ngx.header['X-Instance'] .. '; Path=/; HttpOnly' end end"
+  - { id: retry, hosts: [retry.lab], uri: "/*", priority: 100, upstream_id: retry }
+  - { id: cb, hosts: [cb.lab], uri: "/*", priority: 100, upstream_id: cb }
+  - { id: health, hosts: [health.lab], uri: "/*", priority: 100, upstream_id: health }
+  - id: canary                                  # traffic-split: 90 % pool app / 10 % canary
+    hosts: [canary.lab]
+    uri: "/*"
+    priority: 100
+    upstream_id: app
+    plugins:
+      traffic-split:
+        rules:
+          - weighted_upstreams: [{ upstream_id: canary, weight: 10 }, { weight: 90 }]
+  - { id: mirror, hosts: [mirror.lab], uri: "/*", priority: 100, upstream_id: app, plugins: { proxy-mirror: { host: "http://shadow:8080", sample_ratio: 1 } } }
+  - { id: pp, hosts: [pp.lab], uri: "/*", priority: 100, upstream_id: app }
+  - { id: h2, hosts: [h2.lab], uri: "/*", priority: 100, upstream_id: app }
+  - { id: tls, hosts: [tls.lab], uri: "/*", priority: 100, upstream_id: app_tls }
+  - id: auth                                    # forward auth
+    hosts: [auth.lab]
+    uri: "/*"
+    priority: 100
+    upstream_id: app
+    plugins:
+      forward-auth: { uri: "http://app1:8080/auth", request_headers: [X-Auth-Token, Authorization], upstream_headers: [X-Auth-User, X-Auth-Groups], client_headers: [WWW-Authenticate], request_method: GET }
+  - id: jwt
+    hosts: [jwt.lab]
+    uri: "/*"
+    priority: 100
+    upstream_id: app
+    plugins:
+      jwt-auth: { key_claim_name: iss, header: Authorization }
+  - { id: mtls, hosts: [mtls.lab], uri: "/*", priority: 100, upstream_id: app, plugins: { proxy-rewrite: { headers: { set: { X-Client-Cert-CN: "$ssl_client_s_dn", X-Client-Cert-Verify: "$ssl_client_verify" } } } } }
+  - { id: acme, hosts: [acme.lab], uri: "/*", priority: 100, upstream_id: app }
+  # ------------------------------------------------------------------ path features on any host (priority 50-60)
+  - { id: api-delete, uri: "/api/*", methods: [DELETE], priority: 60, upstream_id: app, plugins: { fault-injection: { abort: { http_status: 405, body: "method not allowed\n" } } } }
+  - { id: canary-header, uri: "/*", vars: [["http_x_canary", "==", "1"]], priority: 55, upstream_id: canary }
+  - { id: canary-query, uri: "/*", vars: [["arg_beta", "==", "1"]], priority: 55, upstream_id: canary }
+  - { id: api, uri: "/api/*", priority: 50, upstream_id: app, plugins: { proxy-rewrite: { regex_uri: ["^/api/(.*)", "/$1"], headers: { set: { X-Route: api } } } } }
+  - { id: versioned, uri: "/v*", priority: 50, upstream_id: app, vars: [["uri", "~~", "^/v[0-9]+/"]], plugins: { proxy-rewrite: { headers: { set: { X-Route: versioned } } } } }
+  - { id: old, uri: "/old/*", priority: 50, upstream_id: app, plugins: { proxy-rewrite: { regex_uri: ["^/old/(.*)", "/new/$1"], headers: { set: { X-Route: rewritten } } } } }
+  - { id: redirect-me, uri: /redirect-me, priority: 50, upstream_id: app, plugins: { redirect: { uri: /landing, ret_code: 301 } } }
+  - { id: ws, uri: /ws, priority: 50, upstream_id: app, enable_websocket: true }
+  - { id: grpc, uri: "/grpc.health.v1.Health/*", priority: 50, upstream_id: grpc }
+  - { id: limited, uri: /limited, priority: 50, upstream_id: app, plugins: { limit-req: { rate: 10, burst: 5, key_type: var, key: remote_addr, rejected_code: 429, nodelay: true } } }
+  - { id: conn-limited, uri: /conn-limited, priority: 50, upstream_id: app, plugins: { limit-conn: { conn: 3, burst: 0, default_conn_delay: 0.1, key_type: var, key: remote_addr, rejected_code: 429 }, proxy-rewrite: { uri: /delay/1000 } } }
+  - { id: allowed, uri: /allowed, priority: 50, upstream_id: app, plugins: { ip-restriction: { whitelist: ["10.77.0.1"] } } }
+  - { id: denied, uri: /denied, priority: 50, upstream_id: app, plugins: { ip-restriction: { blacklist: ["10.77.0.0/24"] } } }
+  - { id: basic, uri: /basic, priority: 50, upstream_id: app, plugins: { basic-auth: { hide_credentials: true } } }
+  - { id: upload, uri: /upload, priority: 50, upstream_id: app, plugins: { client-control: { max_body_size: 1048576 } } }
+  - { id: timeout, uri: /timeout, priority: 50, upstream_id: app_t2, plugins: { proxy-rewrite: { uri: /delay/5000 } } }
+  - { id: fault, uri: /fault, priority: 50, upstream_id: app, plugins: { fault-injection: { abort: { http_status: 503, body: "injected fault\n", percentage: 20 } } } }
+  - id: bw                                      # bandwidth limit: nginx's $limit_rate set from Lua (500 KB/s)
+    uri: /bw
+    priority: 50
+    upstream_id: app
+    plugins:
+      proxy-rewrite: { uri: /bin/1048576 }
+      serverless-pre-function: { phase: access, functions: ["return function(conf, ctx) ngx.var.limit_rate = 500000 end"] }
+  - id: static                                  # served by APISIX itself
+    uri: /static/index.html
+    priority: 50
+    upstream_id: app
+    plugins:
+      serverless-pre-function: { phase: access, functions: ["return function(conf, ctx) local f = io.open('/static/index.html'); local b = f:read('*a'); f:close(); ngx.header['Content-Type'] = 'text/html'; ngx.say(b); ngx.exit(200) end"] }
+  - id: error-page                              # upstream 5xx replaced by a custom page (response-rewrite with a status condition)
+    uri: /error-page
+    priority: 50
+    upstream_id: app
+    plugins:
+      proxy-rewrite: { uri: /status/503 }
+      response-rewrite:
+        vars: [["status", "==", 503]]
+        headers: { set: { X-Error-Page: custom, Content-Type: text/html } }
+        body: "<!doctype html><title>pxlab error</title><h1>Custom error page</h1><p>served by APISIX (response-rewrite) because the upstream failed</p>"
+  - { id: cors, uri: /cors, priority: 50, upstream_id: app, plugins: { cors: { allow_origins: "*", allow_methods: "GET,POST,PUT,DELETE,OPTIONS", allow_headers: "Authorization,Content-Type", max_age: 600 } } }
+  - { id: secure, uri: /secure, priority: 50, upstream_id: app, plugins: { response-rewrite: { headers: { set: { Strict-Transport-Security: "max-age=31536000; includeSubDomains", X-Content-Type-Options: nosniff, X-Frame-Options: DENY, Referrer-Policy: strict-origin-when-cross-origin } } } } }
+  - id: cacheable                               # disk cache (PURGE works with the disk strategy), honours Cache-Control
+    uri: "/cacheable*"
+    priority: 50
+    upstream_id: app
+    plugins:
+      proxy-cache: { cache_strategy: disk, cache_zone: disk_cache_one, cache_key: ["$host", "$request_uri"], cache_method: [GET, HEAD], cache_http_status: [200], hide_cache_headers: false, cache_control: true }
+  - { id: compressible, uri: /compressible, priority: 50, upstream_id: app, plugins: { proxy-rewrite: { uri: /size/65536 } } }
+  - { id: catch-all, uri: "/*", priority: 1, upstream_id: app }
+
+plugin_metadata:                                # collector settings for the opentelemetry plugin (3.x: metadata, not plugin_attr)
+  - id: opentelemetry
+    trace_id_source: random
+    resource: { service.name: apisix }
+    collector: { address: jaeger:4318, request_timeout: 3 }
+    batch_span_processor: { max_export_batch_size: 64, inactive_timeout: 2, max_queue_size: 1024 }
+
+global_rules:
+  - id: 1
+    plugins:
+      real-ip: { source: proxy_protocol_addr, trusted_addresses: ["10.77.0.0/24"], recursive: false }   # only the :8082 listener sets it
+      proxy-rewrite: { headers: { set: { X-Lab-Proxy: apisix, X-Real-IP: "$remote_addr", Forwarded: "for=$remote_addr;proto=$scheme;host=$host" } } }
+      response-rewrite: { headers: { remove: [X-Powered-By], set: { Alt-Svc: 'h3=":8443"; ma=86400' } } }
+      request-id: { header_name: X-Request-ID, include_in_response: true, algorithm: uuid }
+      gzip: { min_length: 256, comp_level: 5, types: ["text/plain", "text/html", "text/css", "application/json", "application/javascript"], vary: true }
+      brotli: { min_length: 256, comp_level: 4, types: ["text/plain", "text/html", "text/css", "application/json", "application/javascript"] }
+      prometheus: {}
+      opentelemetry:
+        sampler: { name: parent_base, options: { root: { name: trace_id_ratio, options: { fraction: 0.001 } } } }
+        additional_header_prefix_attributes: []
+
+consumers:
+  - username: lab
+    plugins:
+      basic-auth: { username: lab, password: lab-pass }
+      jwt-auth: { key: pxlab, secret: pxlab-jwt-secret-please-change-0123456789, algorithm: HS256 }
+
+ssls:
+  - { id: 1, snis: [app.lab, a.lab, proxy, localhost], cert: "${file:certs/app.lab.fullchain.crt}", key: "${file:certs/app.lab.key}" }
+  - { id: 2, snis: [b.lab], cert: "${file:certs/b.lab.fullchain.crt}", key: "${file:certs/b.lab.key}" }
+  - { id: 3, snis: [mtls.lab], cert: "${file:certs/app.lab.fullchain.crt}", key: "${file:certs/app.lab.key}", client: { ca: "${file:certs/ca.crt}", depth: 2 } }
+
+stream_routes:
+  - { id: tcp9000, server_port: 9000, upstream: { type: roundrobin, nodes: { "app1:8080": 1 } } }
+  - { id: udp9001, server_port: 9001, upstream: { type: roundrobin, scheme: udp, nodes: { "app1:9002": 1 } } }
+#END

@@ -1,0 +1,6 @@
+Vendored from: https://github.com/ddnetters/homelab-agent-skills
+Path in upstream repo: caddy-reverse-proxy
+Upstream commit: 808c382 (2026-05-02)
+License: MIT (see LICENSE)
+Vendored on: 2026-09-13
+Unmodified copy; kept for the reverse-proxies lab (skills/README.md explains why).

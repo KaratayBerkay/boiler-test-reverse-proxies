@@ -1,0 +1,51 @@
+# Apache httpd 2.4 (official image) as a reverse proxy + apache-exporter sidecar for Prometheus metrics.
+name: pxlab-apache
+services:
+  proxy:
+    image: httpd:2.4
+    container_name: pxlab-apache
+    cpuset: "0-3"
+    # a root-level side loop turns the flag written by MDMessageCmd (which runs unprivileged) into a graceful reload
+    command: ["sh", "-c", "(while sleep 1; do if [ -f /md/reload.flag ]; then rm -f /md/reload.flag; httpd -k graceful -f /usr/local/apache2/lab/httpd.conf; fi; done) & exec httpd-foreground -f /usr/local/apache2/lab/httpd.conf"]
+    volumes:
+      - ./:/usr/local/apache2/lab:ro
+      - ../../shared/certs:/certs:ro
+      - ../../shared/auth:/auth:ro
+      - ../../shared/static:/static:ro
+      # mod_md reaches Pebble through libcurl, which trusts only the system bundle: replace it with Pebble's CA
+      # (mod_ssl's own upstream verification uses SSLProxyCACertificateFile, so nothing else needs public CAs here)
+      - ../../shared/certs/pebble-ca.pem:/etc/ssl/certs/ca-certificates.crt:ro
+    tmpfs:
+      - /md:mode=1777                          # mod_md store and mod_cache_disk root must be writable by the `daemon` user
+      - /var/cache/apache:mode=1777
+    ports:
+      - "18080:8080"
+      - "18443:8443"
+      - "18444:8444"
+      - "18082:8082"
+      - "19101:9101"
+    ulimits:
+      nofile: { soft: 1048576, hard: 1048576 }
+    networks:
+      pxlab:
+        aliases: [proxy, app.lab, a.lab, b.lab, acme.lab, redirect.lab]
+    healthcheck:
+      # CMD-SHELL runs dash (no /dev/tcp): use bash explicitly
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/9101; printf 'GET /server-status?auto HTTP/1.0\\r\\n\\r\\n' >&3; timeout 2 cat <&3 | grep -q Uptime"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+  exporter:
+    image: lusotycoon/apache-exporter:latest
+    container_name: pxlab-apache-exporter
+    command: ["--scrape_uri=http://proxy:9101/server-status?auto"]
+    cpuset: "0-3"
+    ports: ["19100:9117"]
+    networks: [pxlab]
+    depends_on:
+      proxy:
+        condition: service_healthy
+networks:
+  pxlab:
+    external: true
+    name: pxlab

@@ -1,0 +1,33 @@
+display: NGINX 1.29
+image: nginx:1.29-otel
+family: nginx
+category: event-driven web server / reverse proxy (C); the most deployed proxy on the internet
+container: pxlab-nginx
+containers: [pxlab-nginx, pxlab-nginx-exporter]
+version_cmd: [nginx, -v]
+reload_cmd: [nginx, -c, /etc/nginx/lab/nginx.conf, -s, reload]
+reload_kind: signal (SIGHUP - new workers start with the new config, old workers finish their connections)
+admin: { kind: http, path: /nginx_status, expect: "Active connections" }
+metrics_path: /metrics
+tracing_service: nginx
+cache_header: X-Cache
+features: { health_settle_s: 6 }
+unsupported:
+  lb_active_health: "active health checks (health_check directive) are NGINX Plus only; open source is passive (max_fails / fail_timeout / proxy_next_upstream) - app3 keeps receiving traffic while its /healthz says 503"
+  h2_upstream: "proxy_pass speaks HTTP/1.x to upstreams only; HTTP/2 towards upstreams exists solely for gRPC (grpc_pass)"
+  proxy_protocol_upstream: "PROXY protocol towards upstreams is a stream (L4) feature (proxy_protocol on); for HTTP upstreams nginx sends X-Forwarded-For instead"
+  compress_brotli: "ngx_brotli is a third-party module, not built into the official image (NGINX Plus ships it); build your own image to add it"
+  compress_zstd: "zstd-nginx-module is third-party, not in the official image"
+  docker_label_discovery: "nginx has no Docker/label provider; nginx-proxy (docker-gen) or NGINX Plus' API are separate projects"
+notes: >-
+  Open-source nginx from the official `-otel` image, which also ships the njs, ACME (1.29 preview) and OpenTelemetry dynamic modules.
+  Sticky sessions are done the OSS way (cookie = upstream address, map -> proxy_pass variable) because `sticky` is Plus-only;
+  JWT is verified by an njs handler behind auth_request; PURGE is a refreshing subrequest (real purge is Plus / ngx_cache_purge);
+  active health checks, brotli/zstd and HTTP/2 to non-gRPC upstreams are Plus / third-party features and are declared unsupported.
+docs:
+  - https://hub.docker.com/_/nginx
+  - https://nginx.org/en/docs/http/ngx_http_proxy_module.html
+  - https://nginx.org/en/docs/http/ngx_http_upstream_module.html
+  - https://nginx.org/en/docs/http/ngx_http_acme_module.html
+  - https://nginx.org/en/docs/ngx_otel_module.html
+  - https://nginx.org/en/docs/njs/

@@ -1,0 +1,707 @@
+{
+  "skill": "a6",
+  "product": "Apache APISIX",
+  "generated_from": "https://github.com/api7/a6",
+  "entries": [
+    {
+      "id": "developer",
+      "category": "persona",
+      "title": "developer persona",
+      "path": "references/personas/developer.md",
+      "description": "Persona skill for API developers building and testing APIs on APISIX using the a6 CLI. Provides decision frameworks for API design, route configuration, plugin selection, testing workflows, local development setup, and CI/CD integration patterns.",
+      "plugin_name": null,
+      "apisix_version": ">=3.11.0",
+      "commands": [
+        "a6 route create",
+        "a6 route update",
+        "a6 route get",
+        "a6 upstream create",
+        "a6 service create",
+        "a6 consumer create",
+        "a6 credential create",
+        "a6 plugin list",
+        "a6 plugin get",
+        "a6 config sync",
+        "a6 config dump",
+        "a6 config validate",
+        "a6 debug trace"
+      ],
+      "legacy_name": "a6-persona-developer",
+      "source": "https://github.com/api7/a6/blob/main/skills/a6-persona-developer/SKILL.md"
+    },
+    {
+      "id": "operator",
+      "category": "persona",
+      "title": "operator persona",
+      "path": "references/personas/operator.md",
+      "description": "Persona skill for platform operators and DevOps engineers managing APISIX instances using the a6 CLI. Provides decision frameworks for day-to-day operations including deployment, monitoring, troubleshooting, scaling, security hardening, and disaster recovery workflows.",
+      "plugin_name": null,
+      "apisix_version": ">=3.0.0",
+      "commands": [
+        "a6 route list",
+        "a6 upstream list",
+        "a6 upstream health",
+        "a6 config sync",
+        "a6 config dump",
+        "a6 config diff",
+        "a6 config validate",
+        "a6 debug logs",
+        "a6 debug trace",
+        "a6 ssl create",
+        "a6 global-rule create"
+      ],
+      "legacy_name": "a6-persona-operator",
+      "source": "https://github.com/api7/a6/blob/main/skills/a6-persona-operator/SKILL.md"
+    },
+    {
+      "id": "ai-content-moderation",
+      "category": "plugin",
+      "title": "ai-content-moderation plugin",
+      "path": "references/plugins/ai-content-moderation.md",
+      "description": "Skill for configuring APISIX AWS and Aliyun AI content moderation via the a6 CLI. Covers request and response checks, streaming, deny_code, and ai-proxy.",
+      "plugin_name": "ai-aws-content-moderation",
+      "apisix_version": ">=3.9.0",
+      "commands": [
+        "a6 route create",
+        "a6 route update",
+        "a6 config sync"
+      ],
+      "legacy_name": "a6-plugin-ai-content-moderation",
+      "source": "https://github.com/api7/a6/blob/main/skills/a6-plugin-ai-content-moderation/SKILL.md"
+    },
+    {
+      "id": "ai-prompt-decorator",
+      "category": "plugin",
+      "title": "ai-prompt-decorator plugin",
+      "path": "references/plugins/ai-prompt-decorator.md",
+      "description": "Skill for configuring the Apache APISIX ai-prompt-decorator plugin via the a6 CLI. Covers prepending and appending system/user/assistant messages to LLM requests, setting conversation context, enforcing safety guidelines, and combining with ai-proxy and ai-prompt-template in a pipeline.",
+      "plugin_name": "ai-prompt-decorator",
+      "apisix_version": ">=3.9.0",
+      "commands": [
+        "a6 route create",
+        "a6 route update",
+        "a6 config sync"
+      ],
+      "legacy_name": "a6-plugin-ai-prompt-decorator",
+      "source": "https://github.com/api7/a6/blob/main/skills/a6-plugin-ai-prompt-decorator/SKILL.md"
+    },
+    {
+      "id": "ai-prompt-template",
+      "category": "plugin",
+      "title": "ai-prompt-template plugin",
+      "path": "references/plugins/ai-prompt-template.md",
+      "description": "Skill for configuring the Apache APISIX ai-prompt-template plugin via the a6 CLI. Covers defining reusable prompt templates with variable placeholders, enforcing prompt structure, accepting user inputs for specific fields only, and combining with ai-proxy for a complete AI gateway pipeline.",
+      "plugin_name": "ai-prompt-template",
+      "apisix_version": ">=3.9.0",
+      "commands": [
+        "a6 route create",
+        "a6 route update",
+        "a6 config sync"
+      ],
+      "legacy_name": "a6-plugin-ai-prompt-template",
+      "source": "https://github.com/api7/a6/blob/main/skills/a6-plugin-ai-prompt-template/SKILL.md"
+    },
+    {
+      "id": "ai-proxy",
+      "category": "plugin",
+      "title": "ai-proxy plugin",
+      "path": "references/plugins/ai-proxy.md",
+      "description": "Skill for configuring the Apache APISIX ai-proxy plugin via the a6 CLI. Covers proxying requests to LLM providers (OpenAI, Azure OpenAI, DeepSeek, Anthropic, Gemini, Vertex AI, Amazon Bedrock, and more), authentication per provider, model configuration, streaming, logging, and load balancing with ai-proxy-multi.",
+      "plugin_name": "ai-proxy",
+      "apisix_version": ">=3.9.0",
+      "commands": [
+        "a6 route create",
+        "a6 route update",
+        "a6 config sync"
+      ],
+      "legacy_name": "a6-plugin-ai-proxy",
+      "source": "https://github.com/api7/a6/blob/main/skills/a6-plugin-ai-proxy/SKILL.md"
+    },
+    {
+      "id": "basic-auth",
+      "category": "plugin",
+      "title": "basic-auth plugin",
+      "path": "references/plugins/basic-auth.md",
+      "description": "Skill for configuring the Apache APISIX basic-auth plugin via the a6 CLI. Covers HTTP Basic Authentication setup on routes, consumer credential binding with username/password, hide_credentials, anonymous consumer fallback, and common operational patterns.",
+      "plugin_name": "basic-auth",
+      "apisix_version": ">=3.11.0",
+      "commands": [
+        "a6 route create",
+        "a6 route update",
+        "a6 consumer create",
+        "a6 consumer update",
+        "a6 credential create"
+      ],
+      "legacy_name": "a6-plugin-basic-auth",
+      "source": "https://github.com/api7/a6/blob/main/skills/a6-plugin-basic-auth/SKILL.md"
+    },
+    {
+      "id": "consumer-restriction",
+      "category": "plugin",
+      "title": "consumer-restriction plugin",
+      "path": "references/plugins/consumer-restriction.md",
+      "description": "Skill for configuring the Apache APISIX consumer-restriction plugin via the a6 CLI. Covers restricting access by consumer name, consumer group ID, service ID, or route ID using whitelist/blacklist modes and per-consumer HTTP method restrictions.",
+      "plugin_name": "consumer-restriction",
+      "apisix_version": ">=3.0.0",
+      "commands": [
+        "a6 route create",
+        "a6 route update",
+        "a6 consumer create",
+        "a6 consumer update",
+        "a6 config sync"
+      ],
+      "legacy_name": "a6-plugin-consumer-restriction",
+      "source": "https://github.com/api7/a6/blob/main/skills/a6-plugin-consumer-restriction/SKILL.md"
+    },
+    {
+      "id": "cors",
+      "category": "plugin",
+      "title": "cors plugin",
+      "path": "references/plugins/cors.md",
+      "description": "Skill for configuring the Apache APISIX cors plugin via the a6 CLI. Covers Cross-Origin Resource Sharing setup on routes, allow_origins, allow_methods, allow_headers, credentials handling, regex origin matching, preflight caching, and common operational patterns.",
+      "plugin_name": "cors",
+      "apisix_version": ">=3.0.0",
+      "commands": [
+        "a6 route create",
+        "a6 route update"
+      ],
+      "legacy_name": "a6-plugin-cors",
+      "source": "https://github.com/api7/a6/blob/main/skills/a6-plugin-cors/SKILL.md"
+    },
+    {
+      "id": "datadog",
+      "category": "plugin",
+      "title": "datadog plugin",
+      "path": "references/plugins/datadog.md",
+      "description": "Skill for configuring the Apache APISIX datadog plugin via the a6 CLI. Covers pushing custom metrics to Datadog via DogStatsD, metric tags, batching, plugin metadata for global DogStatsD server config, and Datadog Agent integration.",
+      "plugin_name": "datadog",
+      "apisix_version": ">=3.0.0",
+      "commands": [
+        "a6 route create",
+        "a6 route update",
+        "a6 config sync"
+      ],
+      "legacy_name": "a6-plugin-datadog",
+      "source": "https://github.com/api7/a6/blob/main/skills/a6-plugin-datadog/SKILL.md"
+    },
+    {
+      "id": "ext-plugin",
+      "category": "plugin",
+      "title": "ext-plugin plugin",
+      "path": "references/plugins/ext-plugin.md",
+      "description": "Skill for configuring the Apache APISIX external plugin system (ext-plugin-pre-req, ext-plugin-post-req, ext-plugin-post-resp) via the a6 CLI. Covers Plugin Runner architecture, configuration for Go/Java/Python runners, RPC protocol, graceful degradation, and performance considerations.",
+      "plugin_name": "ext-plugin-pre-req",
+      "apisix_version": ">=3.0.0",
+      "commands": [
+        "a6 route create",
+        "a6 route update",
+        "a6 config sync"
+      ],
+      "legacy_name": "a6-plugin-ext-plugin",
+      "source": "https://github.com/api7/a6/blob/main/skills/a6-plugin-ext-plugin/SKILL.md"
+    },
+    {
+      "id": "fault-injection",
+      "category": "plugin",
+      "title": "fault-injection plugin",
+      "path": "references/plugins/fault-injection.md",
+      "description": "Skill for configuring the Apache APISIX fault-injection plugin via the a6 CLI. Covers injecting delays and HTTP aborts for chaos engineering, percentage-based sampling, conditional injection via vars expressions, custom response headers and body with Nginx variable interpolation.",
+      "plugin_name": "fault-injection",
+      "apisix_version": ">=3.0.0",
+      "commands": [
+        "a6 route create",
+        "a6 route update",
+        "a6 config sync"
+      ],
+      "legacy_name": "a6-plugin-fault-injection",
+      "source": "https://github.com/api7/a6/blob/main/skills/a6-plugin-fault-injection/SKILL.md"
+    },
+    {
+      "id": "grpc-transcode",
+      "category": "plugin",
+      "title": "grpc-transcode plugin",
+      "path": "references/plugins/grpc-transcode.md",
+      "description": "Skill for configuring the Apache APISIX grpc-transcode plugin via the a6 CLI. Covers converting RESTful HTTP requests to gRPC, proto file management, pb_option settings for data type conversion, error detail decoding, and common operational patterns.",
+      "plugin_name": "grpc-transcode",
+      "apisix_version": ">=3.0.0",
+      "commands": [
+        "a6 proto create",
+        "a6 proto list",
+        "a6 proto get",
+        "a6 proto delete",
+        "a6 route create",
+        "a6 route update",
+        "a6 route get"
+      ],
+      "legacy_name": "a6-plugin-grpc-transcode",
+      "source": "https://github.com/api7/a6/blob/main/skills/a6-plugin-grpc-transcode/SKILL.md"
+    },
+    {
+      "id": "hmac-auth",
+      "category": "plugin",
+      "title": "hmac-auth plugin",
+      "path": "references/plugins/hmac-auth.md",
+      "description": "Skill for configuring the Apache APISIX hmac-auth plugin via the a6 CLI. Covers HMAC signature authentication, consumer credential binding with key_id/secret_key, allowed algorithms, clock skew handling, request body validation, signed headers, and common operational patterns.",
+      "plugin_name": "hmac-auth",
+      "apisix_version": ">=3.11.0",
+      "commands": [
+        "a6 route create",
+        "a6 route update",
+        "a6 consumer create",
+        "a6 consumer update",
+        "a6 credential create"
+      ],
+      "legacy_name": "a6-plugin-hmac-auth",
+      "source": "https://github.com/api7/a6/blob/main/skills/a6-plugin-hmac-auth/SKILL.md"
+    },
+    {
+      "id": "http-logger",
+      "category": "plugin",
+      "title": "http-logger plugin",
+      "path": "references/plugins/http-logger.md",
+      "description": "Skill for configuring the Apache APISIX http-logger plugin via the a6 CLI. Covers pushing access logs to HTTP/HTTPS endpoints in batches, custom log formats with NGINX variables, conditional request/response body logging, batch processing tuning, and integration with external logging systems.",
+      "plugin_name": "http-logger",
+      "apisix_version": ">=3.0.0",
+      "commands": [
+        "a6 route create",
+        "a6 route update",
+        "a6 config sync"
+      ],
+      "legacy_name": "a6-plugin-http-logger",
+      "source": "https://github.com/api7/a6/blob/main/skills/a6-plugin-http-logger/SKILL.md"
+    },
+    {
+      "id": "ip-restriction",
+      "category": "plugin",
+      "title": "ip-restriction plugin",
+      "path": "references/plugins/ip-restriction.md",
+      "description": "Skill for configuring the Apache APISIX ip-restriction plugin via the a6 CLI. Covers IP whitelist/blacklist setup on routes, CIDR range support, IPv4/IPv6, real client IP extraction behind proxies, custom error messages, and common operational patterns.",
+      "plugin_name": "ip-restriction",
+      "apisix_version": ">=3.0.0",
+      "commands": [
+        "a6 route create",
+        "a6 route update"
+      ],
+      "legacy_name": "a6-plugin-ip-restriction",
+      "source": "https://github.com/api7/a6/blob/main/skills/a6-plugin-ip-restriction/SKILL.md"
+    },
+    {
+      "id": "jwt-auth",
+      "category": "plugin",
+      "title": "jwt-auth plugin",
+      "path": "references/plugins/jwt-auth.md",
+      "description": "Skill for configuring the Apache APISIX jwt-auth plugin via the a6 CLI. Covers JWT token authentication, HS256/RS256 algorithm selection, consumer credential binding, token lookup from header/query/cookie, claims handling, clock skew, secret management, and common operational patterns.",
+      "plugin_name": "jwt-auth",
+      "apisix_version": ">=3.11.0",
+      "commands": [
+        "a6 route create",
+        "a6 route update",
+        "a6 consumer create",
+        "a6 consumer update",
+        "a6 credential create"
+      ],
+      "legacy_name": "a6-plugin-jwt-auth",
+      "source": "https://github.com/api7/a6/blob/main/skills/a6-plugin-jwt-auth/SKILL.md"
+    },
+    {
+      "id": "kafka-logger",
+      "category": "plugin",
+      "title": "kafka-logger plugin",
+      "path": "references/plugins/kafka-logger.md",
+      "description": "Skill for configuring the Apache APISIX kafka-logger plugin via the a6 CLI. Covers pushing access logs to Apache Kafka topics, broker configuration, SASL authentication (PLAIN, SCRAM-SHA-256/512), custom log formats, producer tuning, and batch processing.",
+      "plugin_name": "kafka-logger",
+      "apisix_version": ">=3.0.0",
+      "commands": [
+        "a6 route create",
+        "a6 route update",
+        "a6 config sync"
+      ],
+      "legacy_name": "a6-plugin-kafka-logger",
+      "source": "https://github.com/api7/a6/blob/main/skills/a6-plugin-kafka-logger/SKILL.md"
+    },
+    {
+      "id": "key-auth",
+      "category": "plugin",
+      "title": "key-auth plugin",
+      "path": "references/plugins/key-auth.md",
+      "description": "Skill for configuring the Apache APISIX key-auth plugin via the a6 CLI. Covers API key authentication setup on routes, consumer credential binding, key lookup from header/query/cookie, hide_credentials, anonymous consumer fallback, and common operational patterns.",
+      "plugin_name": "key-auth",
+      "apisix_version": ">=3.11.0",
+      "commands": [
+        "a6 route create",
+        "a6 route update",
+        "a6 consumer create",
+        "a6 consumer update",
+        "a6 credential create"
+      ],
+      "legacy_name": "a6-plugin-key-auth",
+      "source": "https://github.com/api7/a6/blob/main/skills/a6-plugin-key-auth/SKILL.md"
+    },
+    {
+      "id": "limit-count",
+      "category": "plugin",
+      "title": "limit-count plugin",
+      "path": "references/plugins/limit-count.md",
+      "description": "Skill for configuring the APISIX limit-count plugin via the a6 CLI. Covers fixed and sliding windows, Redis Sentinel, delayed sync, and shared quotas.",
+      "plugin_name": "limit-count",
+      "apisix_version": ">=3.0.0",
+      "commands": [
+        "a6 route create",
+        "a6 route update",
+        "a6 consumer create",
+        "a6 consumer update"
+      ],
+      "legacy_name": "a6-plugin-limit-count",
+      "source": "https://github.com/api7/a6/blob/main/skills/a6-plugin-limit-count/SKILL.md"
+    },
+    {
+      "id": "limit-req",
+      "category": "plugin",
+      "title": "limit-req plugin",
+      "path": "references/plugins/limit-req.md",
+      "description": "Skill for configuring the Apache APISIX limit-req plugin via the a6 CLI. Covers leaky-bucket rate limiting, rate/burst configuration, nodelay behavior, key types, Redis policies for distributed limiting, traffic smoothing, and common operational patterns including combination with limit-count.",
+      "plugin_name": "limit-req",
+      "apisix_version": ">=3.0.0",
+      "commands": [
+        "a6 route create",
+        "a6 route update",
+        "a6 consumer create",
+        "a6 consumer update"
+      ],
+      "legacy_name": "a6-plugin-limit-req",
+      "source": "https://github.com/api7/a6/blob/main/skills/a6-plugin-limit-req/SKILL.md"
+    },
+    {
+      "id": "openid-connect",
+      "category": "plugin",
+      "title": "openid-connect plugin",
+      "path": "references/plugins/openid-connect.md",
+      "description": "Skill for configuring the APISIX openid-connect plugin via the a6 CLI. Covers authorization-code and bearer flows, PAR, DPoP, and session validation.",
+      "plugin_name": "openid-connect",
+      "apisix_version": ">=3.0.0",
+      "commands": [
+        "a6 route create",
+        "a6 route update"
+      ],
+      "legacy_name": "a6-plugin-openid-connect",
+      "source": "https://github.com/api7/a6/blob/main/skills/a6-plugin-openid-connect/SKILL.md"
+    },
+    {
+      "id": "prometheus",
+      "category": "plugin",
+      "title": "prometheus plugin",
+      "path": "references/plugins/prometheus.md",
+      "description": "Skill for configuring APISIX prometheus via the a6 CLI. Covers HTTP, LLM, and AI cache metrics, latency type labels, and Grafana dashboards.",
+      "plugin_name": "prometheus",
+      "apisix_version": ">=3.0.0",
+      "commands": [
+        "a6 route create",
+        "a6 route update",
+        "a6 config sync"
+      ],
+      "legacy_name": "a6-plugin-prometheus",
+      "source": "https://github.com/api7/a6/blob/main/skills/a6-plugin-prometheus/SKILL.md"
+    },
+    {
+      "id": "proxy-rewrite",
+      "category": "plugin",
+      "title": "proxy-rewrite plugin",
+      "path": "references/plugins/proxy-rewrite.md",
+      "description": "Skill for configuring the Apache APISIX proxy-rewrite plugin via the a6 CLI. Covers rewriting request URI, host, method, headers, and scheme before forwarding to upstream. Includes regex URI rewriting, header manipulation, and common operational patterns.",
+      "plugin_name": "proxy-rewrite",
+      "apisix_version": ">=3.0.0",
+      "commands": [
+        "a6 route create",
+        "a6 route update",
+        "a6 route get"
+      ],
+      "legacy_name": "a6-plugin-proxy-rewrite",
+      "source": "https://github.com/api7/a6/blob/main/skills/a6-plugin-proxy-rewrite/SKILL.md"
+    },
+    {
+      "id": "redirect",
+      "category": "plugin",
+      "title": "redirect plugin",
+      "path": "references/plugins/redirect.md",
+      "description": "Skill for configuring the Apache APISIX redirect plugin via the a6 CLI. Covers URI redirects, HTTP-to-HTTPS redirection, regex-based URI rewriting, query string handling, and common operational patterns.",
+      "plugin_name": "redirect",
+      "apisix_version": ">=3.0.0",
+      "commands": [
+        "a6 route create",
+        "a6 route update",
+        "a6 route get"
+      ],
+      "legacy_name": "a6-plugin-redirect",
+      "source": "https://github.com/api7/a6/blob/main/skills/a6-plugin-redirect/SKILL.md"
+    },
+    {
+      "id": "response-rewrite",
+      "category": "plugin",
+      "title": "response-rewrite plugin",
+      "path": "references/plugins/response-rewrite.md",
+      "description": "Skill for configuring the Apache APISIX response-rewrite plugin via the a6 CLI. Covers rewriting response status codes, headers, and body before returning to clients. Includes conditional execution with vars, regex body filters, base64 body decoding, and common operational patterns.",
+      "plugin_name": "response-rewrite",
+      "apisix_version": ">=3.0.0",
+      "commands": [
+        "a6 route create",
+        "a6 route update",
+        "a6 route get"
+      ],
+      "legacy_name": "a6-plugin-response-rewrite",
+      "source": "https://github.com/api7/a6/blob/main/skills/a6-plugin-response-rewrite/SKILL.md"
+    },
+    {
+      "id": "serverless",
+      "category": "plugin",
+      "title": "serverless plugin",
+      "path": "references/plugins/serverless.md",
+      "description": "Skill for configuring the Apache APISIX serverless-pre-function and serverless-post-function plugins via the a6 CLI. Covers inline Lua function execution in configurable request phases, function signature, closure patterns, available Lua APIs, and execution ordering.",
+      "plugin_name": "serverless-pre-function",
+      "apisix_version": ">=3.0.0",
+      "commands": [
+        "a6 route create",
+        "a6 route update",
+        "a6 global-rule create",
+        "a6 config sync"
+      ],
+      "legacy_name": "a6-plugin-serverless",
+      "source": "https://github.com/api7/a6/blob/main/skills/a6-plugin-serverless/SKILL.md"
+    },
+    {
+      "id": "skywalking",
+      "category": "plugin",
+      "title": "skywalking plugin",
+      "path": "references/plugins/skywalking.md",
+      "description": "Skill for configuring the Apache APISIX skywalking plugin via the a6 CLI. Covers distributed tracing with Apache SkyWalking OAP, sampling configuration, service topology, and integration with skywalking-logger for trace-log correlation.",
+      "plugin_name": "skywalking",
+      "apisix_version": ">=3.0.0",
+      "commands": [
+        "a6 route create",
+        "a6 route update",
+        "a6 config sync"
+      ],
+      "legacy_name": "a6-plugin-skywalking",
+      "source": "https://github.com/api7/a6/blob/main/skills/a6-plugin-skywalking/SKILL.md"
+    },
+    {
+      "id": "traffic-split",
+      "category": "plugin",
+      "title": "traffic-split plugin",
+      "path": "references/plugins/traffic-split.md",
+      "description": "Skill for configuring the Apache APISIX traffic-split plugin via the a6 CLI. Covers weighted traffic splitting between upstreams with conditional match rules. Includes canary release, blue-green deployment, A/B testing patterns, and common operational workflows.",
+      "plugin_name": "traffic-split",
+      "apisix_version": ">=3.0.0",
+      "commands": [
+        "a6 route create",
+        "a6 route update",
+        "a6 route get"
+      ],
+      "legacy_name": "a6-plugin-traffic-split",
+      "source": "https://github.com/api7/a6/blob/main/skills/a6-plugin-traffic-split/SKILL.md"
+    },
+    {
+      "id": "wolf-rbac",
+      "category": "plugin",
+      "title": "wolf-rbac plugin",
+      "path": "references/plugins/wolf-rbac.md",
+      "description": "Skill for configuring the Apache APISIX wolf-rbac plugin via the a6 CLI. Covers integration with the Wolf RBAC server for role-based access control, token management, login/user-info/change-password API endpoints, permission checking flow, and multi-application setup.",
+      "plugin_name": "wolf-rbac",
+      "apisix_version": ">=3.0.0",
+      "commands": [
+        "a6 consumer create",
+        "a6 consumer update",
+        "a6 route create",
+        "a6 route update",
+        "a6 config sync"
+      ],
+      "legacy_name": "a6-plugin-wolf-rbac",
+      "source": "https://github.com/api7/a6/blob/main/skills/a6-plugin-wolf-rbac/SKILL.md"
+    },
+    {
+      "id": "zipkin",
+      "category": "plugin",
+      "title": "zipkin plugin",
+      "path": "references/plugins/zipkin.md",
+      "description": "Skill for configuring the Apache APISIX zipkin plugin via the a6 CLI. Covers distributed tracing with Zipkin, Jaeger, or any Zipkin-compatible collector, B3 propagation headers, sampling, span versions, and trace variable logging.",
+      "plugin_name": "zipkin",
+      "apisix_version": ">=3.0.0",
+      "commands": [
+        "a6 route create",
+        "a6 route update",
+        "a6 config sync"
+      ],
+      "legacy_name": "a6-plugin-zipkin",
+      "source": "https://github.com/api7/a6/blob/main/skills/a6-plugin-zipkin/SKILL.md"
+    },
+    {
+      "id": "api-versioning",
+      "category": "recipe",
+      "title": "api versioning recipe",
+      "path": "references/recipes/api-versioning.md",
+      "description": "Recipe skill for implementing API versioning strategies using the a6 CLI. Covers URI path versioning with proxy-rewrite, header-based versioning with traffic-split, query parameter versioning, gradual version migration with weighted traffic splitting, and version deprecation with redirect.",
+      "plugin_name": null,
+      "apisix_version": ">=3.0.0",
+      "commands": [
+        "a6 route create",
+        "a6 route update",
+        "a6 config sync",
+        "a6 config diff"
+      ],
+      "legacy_name": "a6-recipe-api-versioning",
+      "source": "https://github.com/api7/a6/blob/main/skills/a6-recipe-api-versioning/SKILL.md"
+    },
+    {
+      "id": "blue-green",
+      "category": "recipe",
+      "title": "blue green recipe",
+      "path": "references/recipes/blue-green.md",
+      "description": "Recipe skill for implementing blue-green deployments using the a6 CLI. Covers creating two upstream environments, switching traffic instantly via route updates or traffic-split plugin, rollback procedures, and config sync workflows for declarative blue-green management.",
+      "plugin_name": null,
+      "apisix_version": ">=3.0.0",
+      "commands": [
+        "a6 upstream create",
+        "a6 upstream update",
+        "a6 route create",
+        "a6 route update",
+        "a6 config sync",
+        "a6 config diff"
+      ],
+      "legacy_name": "a6-recipe-blue-green",
+      "source": "https://github.com/api7/a6/blob/main/skills/a6-recipe-blue-green/SKILL.md"
+    },
+    {
+      "id": "canary",
+      "category": "recipe",
+      "title": "canary recipe",
+      "path": "references/recipes/canary.md",
+      "description": "Recipe skill for implementing canary releases using the a6 CLI. Covers gradual traffic shifting with the traffic-split plugin, header-based canary routing, weight adjustment progression, monitoring checkpoints, and full promotion or rollback workflows.",
+      "plugin_name": null,
+      "apisix_version": ">=3.0.0",
+      "commands": [
+        "a6 upstream create",
+        "a6 route create",
+        "a6 route update",
+        "a6 route get",
+        "a6 config sync"
+      ],
+      "legacy_name": "a6-recipe-canary",
+      "source": "https://github.com/api7/a6/blob/main/skills/a6-recipe-canary/SKILL.md"
+    },
+    {
+      "id": "circuit-breaker",
+      "category": "recipe",
+      "title": "circuit breaker recipe",
+      "path": "references/recipes/circuit-breaker.md",
+      "description": "Recipe skill for implementing circuit breaker patterns using the a6 CLI. Covers the api-breaker plugin for automatic upstream circuit breaking, configuring unhealthy thresholds, healthy recovery, response code classification, and integration with health checks.",
+      "plugin_name": "api-breaker",
+      "apisix_version": ">=3.0.0",
+      "commands": [
+        "a6 route create",
+        "a6 route update",
+        "a6 route get"
+      ],
+      "legacy_name": "a6-recipe-circuit-breaker",
+      "source": "https://github.com/api7/a6/blob/main/skills/a6-recipe-circuit-breaker/SKILL.md"
+    },
+    {
+      "id": "graphql-proxy",
+      "category": "recipe",
+      "title": "graphql proxy recipe",
+      "path": "references/recipes/graphql-proxy.md",
+      "description": "Recipe skill for implementing GraphQL proxying patterns using the a6 CLI. Covers operation-based routing with built-in GraphQL variables, per-operation rate limiting, REST-to-GraphQL conversion with the degraphql plugin, and security patterns for GraphQL APIs.",
+      "plugin_name": null,
+      "apisix_version": ">=3.0.0",
+      "commands": [
+        "a6 route create",
+        "a6 route update",
+        "a6 config sync",
+        "a6 config diff"
+      ],
+      "legacy_name": "a6-recipe-graphql-proxy",
+      "source": "https://github.com/api7/a6/blob/main/skills/a6-recipe-graphql-proxy/SKILL.md"
+    },
+    {
+      "id": "health-check",
+      "category": "recipe",
+      "title": "health check recipe",
+      "path": "references/recipes/health-check.md",
+      "description": "Recipe skill for configuring upstream health checks using the a6 CLI. Covers active health checks (HTTP probing), passive health checks (response analysis), combining both, configuring healthy/unhealthy thresholds, and monitoring upstream node status.",
+      "plugin_name": null,
+      "apisix_version": ">=3.0.0",
+      "commands": [
+        "a6 upstream create",
+        "a6 upstream update",
+        "a6 upstream get",
+        "a6 upstream health"
+      ],
+      "legacy_name": "a6-recipe-health-check",
+      "source": "https://github.com/api7/a6/blob/main/skills/a6-recipe-health-check/SKILL.md"
+    },
+    {
+      "id": "mtls",
+      "category": "recipe",
+      "title": "mtls recipe",
+      "path": "references/recipes/mtls.md",
+      "description": "Recipe skill for configuring mutual TLS (mTLS) using the a6 CLI. Covers SSL certificate management, upstream mTLS to backend services, client certificate verification, and end-to-end mTLS setup from client through APISIX to upstream.",
+      "plugin_name": null,
+      "apisix_version": ">=3.0.0",
+      "commands": [
+        "a6 ssl create",
+        "a6 ssl update",
+        "a6 ssl list",
+        "a6 ssl get",
+        "a6 ssl delete",
+        "a6 upstream create",
+        "a6 upstream update",
+        "a6 route create"
+      ],
+      "legacy_name": "a6-recipe-mtls",
+      "source": "https://github.com/api7/a6/blob/main/skills/a6-recipe-mtls/SKILL.md"
+    },
+    {
+      "id": "multi-tenant",
+      "category": "recipe",
+      "title": "multi tenant recipe",
+      "path": "references/recipes/multi-tenant.md",
+      "description": "Recipe skill for implementing tenant-aware policies on a shared APISIX gateway using the a6 CLI. Covers shared policies through Consumer Groups, host/path/authenticated-consumer routing, per-consumer rate limiting, context forwarding with proxy-rewrite, and declarative configuration workflows.",
+      "plugin_name": null,
+      "apisix_version": ">=3.11.0",
+      "commands": [
+        "a6 consumer create",
+        "a6 consumer-group create",
+        "a6 consumer-group list",
+        "a6 consumer get",
+        "a6 credential create",
+        "a6 route create",
+        "a6 route update",
+        "a6 upstream create",
+        "a6 config diff",
+        "a6 config sync",
+        "a6 config dump"
+      ],
+      "legacy_name": "a6-recipe-multi-tenant",
+      "source": "https://github.com/api7/a6/blob/main/skills/a6-recipe-multi-tenant/SKILL.md"
+    },
+    {
+      "id": "shared",
+      "category": "shared",
+      "title": "a6 CLI conventions",
+      "path": "references/shared.md",
+      "description": "Core skill for working with the a6 CLI — the Apache APISIX command-line tool. Provides project conventions, command patterns, architecture overview, and development workflow. Load this skill when working on a6 source code, adding new commands, writing tests, or modifying any a6 component.",
+      "plugin_name": null,
+      "apisix_version": ">=3.0.0",
+      "commands": [
+        "a6 route",
+        "a6 upstream",
+        "a6 service",
+        "a6 consumer",
+        "a6 ssl",
+        "a6 plugin",
+        "a6 config",
+        "a6 context"
+      ],
+      "legacy_name": "a6-shared",
+      "source": "https://github.com/api7/a6/blob/main/skills/a6-shared/SKILL.md"
+    }
+  ]
+}

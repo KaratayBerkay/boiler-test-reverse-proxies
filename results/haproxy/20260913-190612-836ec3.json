@@ -1,0 +1,551 @@
+{
+  "stack": "haproxy",
+  "display": "HAProxy 3.4",
+  "image": "haproxy:lts",
+  "family": "haproxy",
+  "category": "TCP/HTTP load balancer (C, event-driven, multi-threaded); the reference L4/L7 balancer",
+  "run_id": "20260913-190612-836ec3",
+  "started": "2026-09-13T16:06:12+00:00",
+  "notes": "Official HAProxy LTS image (3.4.4): QUIC/HTTP/3 through OpenSSL 3.5's native QUIC API, ACME client (experimental, crt-store starts with a temporary key pair until Pebble issues the certificate), Lua forward-auth through the internal httpclient, jwt_verify for JWTs, stick-tables for rate/connection limits, bwlim filter, built-in cache and Prometheus exporter. Master-worker mode makes `kill -USR2 1` a seamless reload. No UDP, no mirroring, no purge, gzip only.",
+  "docs": [
+    "https://hub.docker.com/_/haproxy",
+    "https://docs.haproxy.org/3.4/configuration.html",
+    "https://github.com/haproxy/wiki/wiki/ACME:--native-haproxy",
+    "https://www.haproxy.com/documentation/haproxy-configuration-tutorials/"
+  ],
+  "image_size": "185 MB",
+  "startup_s": null,
+  "version": "HAProxy version 3.4.4-7f03ae6 2026/08/27 - https://haproxy.org/",
+  "containers": [
+    "pxlab-haproxy"
+  ],
+  "unsupported": {
+    "udp_l4": "HAProxy proxies TCP and QUIC only; there is no generic UDP proxying (only syslog/DNS forwarding)",
+    "lb_mirror": "no native request mirroring; use tcp-level tee or SPOE + an external agent",
+    "cache_purge": "the built-in cache is a small-object accelerator without an invalidation API; entries expire by max-age (or reload)",
+    "cache_stale_on_error": "the cache has no stale-if-error / grace mode; an expired entry is refetched and the origin's 503 is returned",
+    "compress_brotli": "compression uses libslz (gzip/deflate only); no brotli or zstd support",
+    "compress_zstd": "no zstd (slz only)",
+    "tracing_otel": "no OpenTelemetry exporter in the official build (the OpenTracing filter needs a separate addon build)",
+    "docker_label_discovery": "no Docker provider; the Data Plane API / Ingress Controller do this in other setups"
+  },
+  "phases": {
+    "capabilities": {
+      "ready_s": 0.0,
+      "probes": {
+        "route_host": {
+          "detail": "a.lab -> app2 (X-Route=a), b.lab -> b1",
+          "status": "ok",
+          "group": "routing",
+          "title": "Host-based routing",
+          "seconds": 0.0
+        },
+        "route_path_prefix": {
+          "detail": "upstream path=/hello query=x=1 X-Route=api",
+          "status": "ok",
+          "group": "routing",
+          "title": "Path prefix route + strip prefix",
+          "seconds": 0.0
+        },
+        "route_path_regex": {
+          "detail": "path=/v2/things X-Route=versioned",
+          "status": "ok",
+          "group": "routing",
+          "title": "Regex path route",
+          "seconds": 0.0
+        },
+        "route_rewrite": {
+          "detail": "upstream path=/new/thing X-Route=rewritten",
+          "status": "ok",
+          "group": "routing",
+          "title": "URL rewrite (regex capture)",
+          "seconds": 0.0
+        },
+        "route_redirect": {
+          "detail": "301 Location=/landing",
+          "status": "ok",
+          "group": "routing",
+          "title": "Redirect issued by the proxy",
+          "seconds": 0.0
+        },
+        "route_header": {
+          "detail": "instance=canary",
+          "status": "ok",
+          "group": "routing",
+          "title": "Header-based routing",
+          "seconds": 0.0
+        },
+        "route_query": {
+          "detail": "instance=canary",
+          "status": "ok",
+          "group": "routing",
+          "title": "Query-parameter routing",
+          "seconds": 0.0
+        },
+        "route_method": {
+          "detail": "DELETE -> 405 (x-instance=None)",
+          "status": "ok",
+          "group": "routing",
+          "title": "Method-based rule",
+          "seconds": 0.0
+        },
+        "redirect_https": {
+          "detail": "301 Location=https://redirect.lab:18080/x?q=1",
+          "status": "ok",
+          "group": "routing",
+          "title": "HTTP -> HTTPS redirect",
+          "seconds": 0.0
+        },
+        "lb_round_robin": {
+          "detail": {
+            "app3": 10,
+            "app1": 10,
+            "app2": 10
+          },
+          "status": "ok",
+          "group": "load-balancing",
+          "title": "Round-robin over 3 backends",
+          "seconds": 0.04
+        },
+        "lb_weighted": {
+          "detail": "app1 share=0.75 {'app1': 75, 'app2': 25}",
+          "share": 0.75,
+          "status": "ok",
+          "group": "load-balancing",
+          "title": "Weighted round-robin (3:1)",
+          "seconds": 0.18
+        },
+        "lb_least_conn": {
+          "detail": "slow share=0.02 {'app1': 154, 'app2': 140, 'slow': 6}",
+          "share": 0.02,
+          "status": "ok",
+          "group": "load-balancing",
+          "title": "Least-connections",
+          "seconds": 0.57
+        },
+        "lb_hash_header": {
+          "detail": "u1 -> {'app3': 20}; 10 users -> {'app1': 15, 'app2': 9, 'app3': 6}",
+          "status": "ok",
+          "group": "load-balancing",
+          "title": "Consistent hashing on a header",
+          "seconds": 0.09
+        },
+        "lb_sticky_cookie": {
+          "detail": "cookie='lab_sticky=a1; path=/; HttpOnly' first=app1 then={'app1': 12}",
+          "status": "ok",
+          "group": "load-balancing",
+          "title": "Cookie stickiness",
+          "seconds": 0.03
+        },
+        "lb_retry_dead_member": {
+          "detail": "codes={200: 30} max_ms=3",
+          "max_ms": 2.9,
+          "status": "ok",
+          "group": "load-balancing",
+          "title": "Retry on connect failure",
+          "seconds": 0.06
+        },
+        "lb_outlier_ejection": {
+          "detail": "first20={200: 20} last20={200: 40} flaky hits in last 20=0",
+          "errors_first20": 0,
+          "errors_last20": -20,
+          "flaky_hits_last20": 0,
+          "status": "ok",
+          "group": "load-balancing",
+          "title": "Passive health / outlier ejection",
+          "seconds": 1.62
+        },
+        "lb_active_health": {
+          "detail": "while unhealthy: {'app1': 15, 'app2': 15} app3 hits=0; re-admitted after 1.6s",
+          "readmit_s": 1.6,
+          "status": "ok",
+          "group": "load-balancing",
+          "title": "Active health checks",
+          "seconds": 6.77
+        },
+        "lb_canary_split": {
+          "detail": "canary share=0.140 {'app1': 86, 'app2': 86, 'canary': 28}",
+          "share": 0.14,
+          "status": "ok",
+          "group": "load-balancing",
+          "title": "Weighted traffic split (canary)",
+          "seconds": 0.28
+        },
+        "lb_mirror": {
+          "status": "unsupported",
+          "detail": "no native request mirroring; use tcp-level tee or SPOE + an external agent",
+          "group": "load-balancing",
+          "title": "Request mirroring / shadowing",
+          "seconds": 0
+        },
+        "lb_upstream_keepalive": {
+          "detail": "new upstream connections for 60 requests: {'app2': 2, 'app1': 2, 'app3': 2}",
+          "upstream_connections": 6,
+          "status": "ok",
+          "group": "load-balancing",
+          "title": "Upstream connection pooling",
+          "seconds": 0.36
+        },
+        "http2_tls": {
+          "detail": "HTTP/2 200 upstream proto=HTTP/1.1",
+          "status": "ok",
+          "group": "protocols",
+          "title": "HTTP/2 (TLS, ALPN)",
+          "seconds": 0.01
+        },
+        "h2c_frontend": {
+          "detail": "status=200 body=b'{\\n \"instance\": \"app2\",\\n \"pool\": \"app\",\\n '",
+          "status": "ok",
+          "group": "protocols",
+          "title": "HTTP/2 cleartext (prior knowledge) on :8080",
+          "seconds": 0.0
+        },
+        "http3": {
+          "detail": "proto=HTTP/3.0 status={'200': 1213} errors=0 []",
+          "status": "ok",
+          "group": "protocols",
+          "title": "HTTP/3 (QUIC)",
+          "seconds": 1.47
+        },
+        "websocket": {
+          "detail": "text echo='hello' binary 4096=4096 instance=app2",
+          "status": "ok",
+          "group": "protocols",
+          "title": "WebSocket proxying",
+          "seconds": 0.03
+        },
+        "sse_streaming": {
+          "detail": "events=5 first=0.21s total=1.20s",
+          "status": "ok",
+          "group": "protocols",
+          "title": "Server-sent events (no response buffering)",
+          "seconds": 1.2
+        },
+        "grpc": {
+          "detail": "tls:8443: _InactiveRpcError: <_InactiveRpcError of RPC that terminated with: status = StatusCode.UNAVAILABLE d; h2c:8080: _InactiveRpcError: <_InactiveRpcError of RPC that terminated with: status = StatusCode.UNAVAILABLE d",
+          "status": "fail",
+          "group": "protocols",
+          "title": "gRPC proxying (h2 -> upstream h2c :9090)",
+          "seconds": 0.1
+        },
+        "h2_upstream": {
+          "detail": "upstream proto=HTTP/2.0",
+          "status": "ok",
+          "group": "protocols",
+          "title": "HTTP/2 to the upstream (h2c)",
+          "seconds": 0.0
+        },
+        "tls_upstream": {
+          "detail": "listener=tls tls={'version': 'TLS1.3', 'sni': 'backend.lab', 'alpn': 'http/1.1'}",
+          "status": "ok",
+          "group": "protocols",
+          "title": "TLS re-encryption to the upstream (verified)",
+          "seconds": 0.01
+        },
+        "proxy_protocol_upstream": {
+          "detail": "listener=pp proxy_protocol={'version': 2, 'src_ip': '10.77.0.1', 'src_port': 35188, 'dst_ip': '10.77.0.2', 'dst_port': 8080, 'protocol': '0x11'}",
+          "status": "ok",
+          "group": "protocols",
+          "title": "PROXY protocol v2 to the upstream",
+          "seconds": 0.0
+        },
+        "proxy_protocol_accept": {
+          "detail": "X-Forwarded-For=203.0.113.9 remote_addr=10.77.0.2:41026",
+          "status": "ok",
+          "group": "protocols",
+          "title": "Accept PROXY protocol from clients (:8082)",
+          "seconds": 0.0
+        },
+        "tcp_l4": {
+          "detail": "instance=app1 remote_addr=10.77.0.2:42736 headers=['Connection']",
+          "status": "ok",
+          "group": "protocols",
+          "title": "TCP (L4) proxying",
+          "seconds": 0.0
+        },
+        "udp_l4": {
+          "status": "unsupported",
+          "detail": "HAProxy proxies TCP and QUIC only; there is no generic UDP proxying (only syslog/DNS forwarding)",
+          "group": "protocols",
+          "title": "UDP proxying",
+          "seconds": 0
+        },
+        "tls_passthrough_sni": {
+          "detail": "subject=CN = backend.lab, O = pxlab TLSv1.3",
+          "status": "ok",
+          "group": "protocols",
+          "title": "TLS passthrough by SNI (L4)",
+          "seconds": 0.04
+        },
+        "tls_termination": {
+          "detail": "200 cert=CN = app.lab, O = pxlab TLSv1.3 X-Forwarded-Proto=https",
+          "status": "ok",
+          "group": "tls",
+          "title": "TLS termination",
+          "seconds": 0.05
+        },
+        "tls13": {
+          "detail": "TLSv1.3 TLS_AES_256_GCM_SHA384",
+          "status": "ok",
+          "group": "tls",
+          "title": "TLS 1.3 negotiated",
+          "seconds": 0.01
+        },
+        "tls_legacy_refused": {
+          "detail": "80F78D0C1C780000:error:0A00042E:SSL routines:ssl3_read_bytes:tlsv1 alert protocol version:../ssl/record/rec_layer_s3.c:918:SSL alert number 70\nProtocol: TLSv1.1\n    Protocol  : TLSv1.1",
+          "status": "ok",
+          "group": "tls",
+          "title": "TLS 1.0/1.1 refused",
+          "seconds": 0.48
+        },
+        "mtls_client_cert": {
+          "detail": "without cert: ReadError: [SSL: TLSV13_ALERT_CERTIFICATE_REQUIRED] tlsv13 alert certificate req; with cert: 200; forwarded: {'X-Client-Cert-Cn': 'lab-client', 'X-Client-Cert-Verify': '0'}",
+          "cert_headers": {
+            "X-Client-Cert-Cn": "lab-client",
+            "X-Client-Cert-Verify": "0"
+          },
+          "status": "ok",
+          "group": "tls",
+          "title": "Mutual TLS (client certificate required)",
+          "seconds": 0.02
+        },
+        "sni_multi_cert": {
+          "detail": "app.lab -> CN = app.lab, O = pxlab; b.lab -> CN = b.lab, O = pxlab",
+          "status": "ok",
+          "group": "tls",
+          "title": "Multiple certificates selected by SNI",
+          "seconds": 0.09
+        },
+        "acme_auto_cert": {
+          "detail": "subject= issuer=CN = Pebble Intermediate CA 26e34e sans=DNS:acme.lab",
+          "status": "ok",
+          "group": "tls",
+          "title": "Automatic certificate via ACME (Pebble)",
+          "seconds": 0.04
+        },
+        "cache_hit": {
+          "detail": "origin app3#1 -> app3#1; X-Cache: MISS -> HIT age=0",
+          "status": "ok",
+          "group": "caching",
+          "title": "Response caching",
+          "seconds": 0.01
+        },
+        "cache_purge": {
+          "status": "unsupported",
+          "detail": "the built-in cache is a small-object accelerator without an invalidation API; entries expire by max-age (or reload)",
+          "group": "caching",
+          "title": "Cache purge",
+          "seconds": 0
+        },
+        "cache_stale_on_error": {
+          "status": "unsupported",
+          "detail": "the cache has no stale-if-error / grace mode; an expired entry is refetched and the origin's 503 is returned",
+          "group": "caching",
+          "title": "Serve stale on upstream error",
+          "seconds": 0
+        },
+        "compress_gzip": {
+          "detail": "Content-Encoding=gzip 1784 bytes (65536 uncompressed)",
+          "bytes": 1784,
+          "status": "ok",
+          "group": "compression",
+          "title": "gzip compression",
+          "seconds": 0.0
+        },
+        "compress_brotli": {
+          "status": "unsupported",
+          "detail": "compression uses libslz (gzip/deflate only); no brotli or zstd support",
+          "group": "compression",
+          "title": "Brotli compression",
+          "seconds": 0
+        },
+        "compress_zstd": {
+          "status": "unsupported",
+          "detail": "no zstd (slz only)",
+          "group": "compression",
+          "title": "Zstandard compression",
+          "seconds": 0
+        },
+        "xff_headers": {
+          "detail": "XFF=10.77.0.1 Proto=http Host=app.lab:18080 X-Real-IP=10.77.0.1",
+          "status": "ok",
+          "group": "headers",
+          "title": "X-Forwarded-* headers",
+          "seconds": 0.0
+        },
+        "forwarded_rfc7239": {
+          "detail": "Forwarded='proto=http;host=\"app.lab:18080\";for=10.77.0.1'",
+          "status": "ok",
+          "group": "headers",
+          "title": "RFC 7239 Forwarded header",
+          "seconds": 0.0
+        },
+        "header_add_remove": {
+          "detail": "X-Lab-Proxy=haproxy X-Powered-By=removed Server=haproxy",
+          "status": "ok",
+          "group": "headers",
+          "title": "Header manipulation",
+          "seconds": 0.0
+        },
+        "request_id": {
+          "detail": "'0A4D0001:8938_0A4D0002:1F90_6AA6CA03_0886:0008' / '0A4D0001:8938_0A4D0002:1F90_6AA6CA03_0887:0008'",
+          "status": "ok",
+          "group": "headers",
+          "title": "Request ID generation",
+          "seconds": 0.0
+        },
+        "rate_limit": {
+          "detail": "codes={200: 10, 429: 30}",
+          "rejected": 30,
+          "status": "ok",
+          "group": "security",
+          "title": "Request rate limiting",
+          "seconds": 0.05
+        },
+        "connection_limit": {
+          "detail": "codes={200: 3, 429: 9}",
+          "rejected": 9,
+          "status": "ok",
+          "group": "security",
+          "title": "Concurrent connection limit",
+          "seconds": 1.01
+        },
+        "ip_allow_deny": {
+          "detail": "/allowed=200 /denied=403",
+          "status": "ok",
+          "group": "security",
+          "title": "IP allow / deny lists",
+          "seconds": 0.0
+        },
+        "basic_auth": {
+          "detail": "no creds=401 (Basic realm=\"pxlab\") creds=200",
+          "status": "ok",
+          "group": "security",
+          "title": "HTTP basic authentication",
+          "seconds": 0.0
+        },
+        "jwt_auth": {
+          "detail": "none=401 valid=200 bad-sig=401",
+          "status": "ok",
+          "group": "security",
+          "title": "JWT validation (HS256)",
+          "seconds": 0.0
+        },
+        "forward_auth": {
+          "detail": "none=401 token=200 X-Auth-User=alice",
+          "status": "ok",
+          "group": "security",
+          "title": "External authorization (forward auth / auth_request / ext_authz)",
+          "seconds": 0.0
+        },
+        "cors": {
+          "detail": "204 ACAO=https://example.com methods=GET, POST, PUT, DELETE, OPTIONS",
+          "status": "ok",
+          "group": "security",
+          "title": "CORS preflight answered by the proxy",
+          "seconds": 0.0
+        },
+        "security_headers": {
+          "detail": "{'strict-transport-security': 'max-age=31536000; includeSubDomains', 'x-content-type-options': 'nosniff', 'x-frame-options': 'DENY', 'referrer-policy': 'strict-origin-when-cross-origin'}",
+          "status": "ok",
+          "group": "security",
+          "title": "Security response headers",
+          "seconds": 0.0
+        },
+        "body_size_limit": {
+          "detail": "2MiB=413 100KiB=200",
+          "status": "ok",
+          "group": "security",
+          "title": "Request body size limit",
+          "seconds": 0.01
+        },
+        "upstream_timeout": {
+          "detail": "504 after 2.00s",
+          "seconds": 2.0,
+          "status": "ok",
+          "group": "security",
+          "title": "Upstream read timeout"
+        },
+        "fault_injection": {
+          "detail": "503 share=0.16 codes={200: 84, 503: 16}",
+          "share": 0.16,
+          "status": "ok",
+          "group": "security",
+          "title": "Fault injection",
+          "seconds": 0.11
+        },
+        "bandwidth_limit": {
+          "detail": "200 1048576 bytes in 2.10s (500 KB/s)",
+          "seconds": 2.1,
+          "status": "ok",
+          "group": "security",
+          "title": "Bandwidth limiting"
+        },
+        "static_files": {
+          "detail": "200 '<!doctype html><title>pxlab static</title><p>pxlab static fi' x-instance=None",
+          "status": "ok",
+          "group": "operations",
+          "title": "Static file serving",
+          "seconds": 0.0
+        },
+        "custom_error_page": {
+          "detail": "503 X-Error-Page=custom body='<!doctype html><title>pxlab error</title><h1>Custom error pa'",
+          "status": "ok",
+          "group": "operations",
+          "title": "Custom error page",
+          "seconds": 0.0
+        },
+        "hot_reload": {
+          "detail": "reload rc=0 ''; then 200",
+          "status": "ok",
+          "group": "operations",
+          "title": "Configuration reload without restart",
+          "seconds": 0.17
+        },
+        "access_log_json": {
+          "detail": "json keys: ['backend', 'bytes', 'client_ip', 'frontend', 'method', 'proto', 'request_id', 'server', 'ssl', 'status', 'time', 'time_ms']",
+          "status": "ok",
+          "group": "operations",
+          "title": "Structured (JSON) access log",
+          "seconds": 1.54
+        },
+        "metrics_prometheus": {
+          "detail": "200 4508 samples e.g. haproxy_process_nbthread 4",
+          "status": "ok",
+          "group": "operations",
+          "title": "Prometheus metrics",
+          "seconds": 0.04
+        },
+        "admin_api": {
+          "detail": "GET /stats -> 200 '<!DOCTYPE html>\\n<html lang=\"en\"><head><title>Statistics Report for HAProxy</titl'",
+          "status": "ok",
+          "group": "operations",
+          "title": "Admin / stats / runtime API",
+          "seconds": 0.04
+        },
+        "tracing_otel": {
+          "status": "unsupported",
+          "detail": "no OpenTelemetry exporter in the official build (the OpenTracing filter needs a separate addon build)",
+          "group": "operations",
+          "title": "Distributed tracing (OpenTelemetry -> Jaeger)",
+          "seconds": 0
+        },
+        "docker_label_discovery": {
+          "status": "unsupported",
+          "detail": "no Docker provider; the Data Plane API / Ingress Controller do this in other setups",
+          "group": "operations",
+          "title": "Service discovery from Docker labels",
+          "seconds": 0
+        }
+      },
+      "summary": {
+        "ok": 60,
+        "fail": 1,
+        "error": 0,
+        "unsupported": 8
+      },
+      "_seconds": 23.1
+    }
+  },
+  "finished": "2026-09-13T16:06:35+00:00"
+}

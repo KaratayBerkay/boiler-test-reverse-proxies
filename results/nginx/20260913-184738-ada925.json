@@ -1,0 +1,113 @@
+{
+  "stack": "nginx",
+  "display": "NGINX 1.29",
+  "image": "nginx:1.29-otel",
+  "family": "nginx",
+  "category": "event-driven web server / reverse proxy (C); the most deployed proxy on the internet",
+  "run_id": "20260913-184738-ada925",
+  "started": "2026-09-13T15:47:38+00:00",
+  "notes": "Open-source nginx from the official `-otel` image, which also ships the njs, ACME (1.29 preview) and OpenTelemetry dynamic modules. Sticky sessions are done the OSS way (cookie = upstream address, map -> proxy_pass variable) because `sticky` is Plus-only; JWT is verified by an njs handler behind auth_request; PURGE is a refreshing subrequest (real purge is Plus / ngx_cache_purge); active health checks, brotli/zstd and HTTP/2 to non-gRPC upstreams are Plus / third-party features and are declared unsupported.",
+  "docs": [
+    "https://hub.docker.com/_/nginx",
+    "https://nginx.org/en/docs/http/ngx_http_proxy_module.html",
+    "https://nginx.org/en/docs/http/ngx_http_upstream_module.html",
+    "https://nginx.org/en/docs/http/ngx_http_acme_module.html",
+    "https://nginx.org/en/docs/ngx_otel_module.html",
+    "https://nginx.org/en/docs/njs/"
+  ],
+  "image_size": "250 MB",
+  "startup_s": null,
+  "version": "nginx version: nginx/1.29.8",
+  "containers": [
+    "pxlab-nginx",
+    "pxlab-nginx-exporter"
+  ],
+  "unsupported": {
+    "lb_active_health": "active health checks (health_check directive) are NGINX Plus only; open source is passive (max_fails / fail_timeout / proxy_next_upstream) - app3 keeps receiving traffic while its /healthz says 503",
+    "h2_upstream": "proxy_pass speaks HTTP/1.x to upstreams only; HTTP/2 towards upstreams exists solely for gRPC (grpc_pass)",
+    "proxy_protocol_upstream": "PROXY protocol towards upstreams is a stream (L4) feature (proxy_protocol on); for HTTP upstreams nginx sends X-Forwarded-For instead",
+    "compress_brotli": "ngx_brotli is a third-party module, not built into the official image (NGINX Plus ships it); build your own image to add it",
+    "compress_zstd": "zstd-nginx-module is third-party, not in the official image",
+    "docker_label_discovery": "nginx has no Docker/label provider; nginx-proxy (docker-gen) or NGINX Plus' API are separate projects"
+  },
+  "phases": {
+    "chaos": {
+      "failover": {
+        "status": "ok",
+        "stop_at_s": 5.9,
+        "start_at_s": 14.1,
+        "load": {
+          "rps": 975.5,
+          "requests": 23442,
+          "errors": 0,
+          "non2xx": 0,
+          "status": {
+            "200": 23442
+          },
+          "p50": 0.591,
+          "p99": 0.996,
+          "p999": 2.565,
+          "max": 3003.278
+        },
+        "timeline": {
+          "requests": 557,
+          "failed": 0,
+          "codes": {
+            "200": 557
+          },
+          "instances": {
+            "app3": 227,
+            "app1": 240,
+            "app2": 90
+          },
+          "first_fail_s": null,
+          "last_fail_s": null,
+          "fail_window_s": 0.0
+        },
+        "app2_back_after_s": 14.1,
+        "detail": "load errors=0/23442 ({'200': 23442}); timeline failed=0/557 window=0.0s (first=Nones after stop@5.9s); app2 back after 14.1s"
+      },
+      "reload": {
+        "status": "ok",
+        "reload_rc": 0,
+        "reload_seconds": 0.19,
+        "reload_output": "2026/09/13 15:48:12 [notice] 3268#3268: js vm init njs: 000062C52CDF7780\n2026/09/13 15:48:12 [notice] 3268#3268: signal process started",
+        "load": {
+          "rps": 54825.9,
+          "requests": 822508,
+          "errors": 117,
+          "non2xx": 0,
+          "status": {
+            "200": 822508
+          },
+          "p50": 0.463,
+          "p99": 9.921,
+          "max": 59.918,
+          "error_samples": {
+            "aborted due to deadline": 63,
+            "connection closed before message completed": 3,
+            "connection error": 50
+          }
+        },
+        "timeline": {
+          "requests": 326,
+          "failed": 0,
+          "codes": {
+            "200": 326
+          },
+          "instances": {
+            "app3": 101,
+            "app2": 115,
+            "app1": 110
+          },
+          "first_fail_s": null,
+          "last_fail_s": null,
+          "fail_window_s": 0.0
+        },
+        "detail": "reload rc=0 in 0.19s; load errors=117 non2xx=0 of 822508; timeline failed=0/326"
+      },
+      "_seconds": 44.6
+    }
+  },
+  "finished": "2026-09-13T15:48:23+00:00"
+}

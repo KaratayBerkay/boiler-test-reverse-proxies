@@ -1,0 +1,560 @@
+{
+  "stack": "pingora",
+  "display": "Pingora (Rust, custom)",
+  "image": "pxlab-pingora:latest",
+  "family": "rust",
+  "category": "a proxy written in Rust on Cloudflare's Pingora framework - routing and policies as code",
+  "run_id": "20260913-214819-852dcd",
+  "started": "2026-09-13T18:48:19+00:00",
+  "notes": "A ~700-line Rust proxy on Pingora 0.9 (Cloudflare's framework): ProxyHttp hooks implement host/path routing, round-robin / weighted / ketama hashing / cookie stickiness, HTTP health checks, retries on connect failure, outlier ejection, h2c and verified-TLS upstreams, gRPC, rate and concurrency limits (pingora-limits), JWT (jsonwebtoken), basic auth, IP lists, fault injection, per-route timeouts, response cache (pingora-cache MemCache), compression, mTLS, SNI certificate callback, a static file, a custom error page, JSON access log, Prometheus metrics, a status API and a raw TCP proxy app. Zero-downtime upgrade via the framework's socket hand-off. What is missing is missing from the code, not from the framework's limits (mostly).",
+  "docs": [
+    "https://github.com/cloudflare/pingora",
+    "https://github.com/cloudflare/pingora/blob/main/docs/user_guide/index.md",
+    "https://docs.rs/pingora-proxy/latest/pingora_proxy/trait.ProxyHttp.html",
+    "https://docs.rs/pingora-load-balancing/latest/",
+    "https://docs.rs/pingora-cache/latest/"
+  ],
+  "image_size": "179 MB",
+  "startup_s": null,
+  "version": "sh: 1: Syntax error: \"(\" unexpected",
+  "containers": [
+    "pxlab-pingora"
+  ],
+  "unsupported": {
+    "lb_least_conn": "pingora-load-balancing ships round-robin / random / consistent-hash selection; least-connections would be a custom BackendSelection",
+    "lb_mirror": "no mirroring in the framework (would be a second upstream request written by hand)",
+    "proxy_protocol_upstream": "no PROXY protocol towards upstreams",
+    "proxy_protocol_accept": "no PROXY protocol on listeners",
+    "udp_l4": "Pingora is TCP/HTTP only",
+    "tls_passthrough_sni": "the L4 app in this proxy copies bytes; SNI parsing for passthrough is not implemented",
+    "http3": "no HTTP/3 in Pingora",
+    "acme_auto_cert": "no ACME client (certificates come from files / callbacks)",
+    "cache_purge": "pingora-cache serves PURGE only for storages implementing purge; MemCache does in principle but the lab keeps it out of scope",
+    "cache_stale_on_error": "stale-if-error is wired through should_serve_stale(); the in-memory cache expires objects before the lab's 2 s window",
+    "compress_brotli": "pingora's compression module in this build negotiates gzip/zstd (brotli support is feature-gated)",
+    "forward_auth": "no built-in subrequest to an authorizer (would be a hand-written upstream call)",
+    "bandwidth_limit": "no built-in bandwidth limiting (body filters are synchronous)",
+    "tracing_otel": "no OpenTelemetry integration in this binary",
+    "docker_label_discovery": "no Docker provider"
+  },
+  "phases": {
+    "capabilities": {
+      "ready_s": 0.0,
+      "probes": {
+        "route_host": {
+          "detail": "a.lab -> app2 (X-Route=a), b.lab -> b1",
+          "status": "ok",
+          "group": "routing",
+          "title": "Host-based routing",
+          "seconds": 0.01
+        },
+        "route_path_prefix": {
+          "detail": "upstream path=/hello query=x=1 X-Route=api",
+          "status": "ok",
+          "group": "routing",
+          "title": "Path prefix route + strip prefix",
+          "seconds": 0.0
+        },
+        "route_path_regex": {
+          "detail": "path=/v2/things X-Route=versioned",
+          "status": "ok",
+          "group": "routing",
+          "title": "Regex path route",
+          "seconds": 0.0
+        },
+        "route_rewrite": {
+          "detail": "upstream path=/new/thing X-Route=rewritten",
+          "status": "ok",
+          "group": "routing",
+          "title": "URL rewrite (regex capture)",
+          "seconds": 0.0
+        },
+        "route_redirect": {
+          "detail": "301 Location=/landing",
+          "status": "ok",
+          "group": "routing",
+          "title": "Redirect issued by the proxy",
+          "seconds": 0.0
+        },
+        "route_header": {
+          "detail": "instance=canary",
+          "status": "ok",
+          "group": "routing",
+          "title": "Header-based routing",
+          "seconds": 0.0
+        },
+        "route_query": {
+          "detail": "instance=canary",
+          "status": "ok",
+          "group": "routing",
+          "title": "Query-parameter routing",
+          "seconds": 0.0
+        },
+        "route_method": {
+          "detail": "DELETE -> 405 (x-instance=None)",
+          "status": "ok",
+          "group": "routing",
+          "title": "Method-based rule",
+          "seconds": 0.0
+        },
+        "redirect_https": {
+          "detail": "301 Location=https://redirect.lab/x?q=1",
+          "status": "ok",
+          "group": "routing",
+          "title": "HTTP -> HTTPS redirect",
+          "seconds": 0.0
+        },
+        "lb_round_robin": {
+          "detail": {
+            "app3": 10,
+            "app1": 10,
+            "app2": 10
+          },
+          "status": "ok",
+          "group": "load-balancing",
+          "title": "Round-robin over 3 backends",
+          "seconds": 0.05
+        },
+        "lb_weighted": {
+          "detail": "app1 share=0.75 {'app1': 75, 'app2': 25}",
+          "share": 0.75,
+          "status": "ok",
+          "group": "load-balancing",
+          "title": "Weighted round-robin (3:1)",
+          "seconds": 0.21
+        },
+        "lb_least_conn": {
+          "status": "unsupported",
+          "detail": "pingora-load-balancing ships round-robin / random / consistent-hash selection; least-connections would be a custom BackendSelection",
+          "group": "load-balancing",
+          "title": "Least-connections",
+          "seconds": 0
+        },
+        "lb_hash_header": {
+          "detail": "u1 -> {'app1': 20}; 10 users -> {'app2': 15, 'app1': 6, 'app3': 9}",
+          "status": "ok",
+          "group": "load-balancing",
+          "title": "Consistent hashing on a header",
+          "seconds": 0.11
+        },
+        "lb_sticky_cookie": {
+          "detail": "cookie='lab_sticky=app3; Path=/; HttpOnly' first=app3 then={'app3': 12}",
+          "status": "ok",
+          "group": "load-balancing",
+          "title": "Cookie stickiness",
+          "seconds": 0.04
+        },
+        "lb_retry_dead_member": {
+          "detail": "codes={200: 30} max_ms=3",
+          "max_ms": 3.4,
+          "status": "ok",
+          "group": "load-balancing",
+          "title": "Retry on connect failure",
+          "seconds": 0.08
+        },
+        "lb_outlier_ejection": {
+          "detail": "first20={200: 17, 500: 3} last20={200: 40} flaky hits in last 20=0",
+          "errors_first20": 3,
+          "errors_last20": -20,
+          "flaky_hits_last20": 0,
+          "status": "ok",
+          "group": "load-balancing",
+          "title": "Passive health / outlier ejection",
+          "seconds": 1.62
+        },
+        "lb_active_health": {
+          "detail": "ejected after 2.1s; while unhealthy: {'app1': 15, 'app2': 15} app3 hits=0; re-admitted after 2.1s",
+          "eject_s": 2.1,
+          "readmit_s": 2.1,
+          "status": "ok",
+          "group": "load-balancing",
+          "title": "Active health checks",
+          "seconds": 4.48
+        },
+        "lb_canary_split": {
+          "detail": "canary share=0.100 {'app1': 60, 'app2': 60, 'app3': 60, 'canary': 20}",
+          "share": 0.1,
+          "status": "ok",
+          "group": "load-balancing",
+          "title": "Weighted traffic split (canary)",
+          "seconds": 0.52
+        },
+        "lb_mirror": {
+          "status": "unsupported",
+          "detail": "no mirroring in the framework (would be a second upstream request written by hand)",
+          "group": "load-balancing",
+          "title": "Request mirroring / shadowing",
+          "seconds": 0
+        },
+        "lb_upstream_keepalive": {
+          "detail": "new upstream connections for 60 requests: {'app1': 2, 'app2': 2, 'app3': 2}",
+          "upstream_connections": 6,
+          "status": "ok",
+          "group": "load-balancing",
+          "title": "Upstream connection pooling",
+          "seconds": 0.33
+        },
+        "http2_tls": {
+          "detail": "HTTP/2 200 upstream proto=HTTP/1.1",
+          "status": "ok",
+          "group": "protocols",
+          "title": "HTTP/2 (TLS, ALPN)",
+          "seconds": 0.01
+        },
+        "h2c_frontend": {
+          "detail": "status=200 body=b'{\\n \"instance\": \"app2\",\\n \"pool\": \"app\",\\n '",
+          "status": "ok",
+          "group": "protocols",
+          "title": "HTTP/2 cleartext (prior knowledge) on :8080",
+          "seconds": 0.0
+        },
+        "http3": {
+          "status": "unsupported",
+          "detail": "no HTTP/3 in Pingora",
+          "group": "protocols",
+          "title": "HTTP/3 (QUIC)",
+          "seconds": 0
+        },
+        "websocket": {
+          "detail": "text echo='hello' binary 4096=4096 instance=app1",
+          "status": "ok",
+          "group": "protocols",
+          "title": "WebSocket proxying",
+          "seconds": 0.02
+        },
+        "sse_streaming": {
+          "detail": "events=5 first=0.0s total=1.20s",
+          "status": "ok",
+          "group": "protocols",
+          "title": "Server-sent events (no response buffering)",
+          "seconds": 1.2
+        },
+        "grpc": {
+          "detail": "tls:8443: SERVING",
+          "via": "tls:8443",
+          "status": "ok",
+          "group": "protocols",
+          "title": "gRPC proxying (h2 -> upstream h2c :9090)",
+          "seconds": 0.1
+        },
+        "h2_upstream": {
+          "detail": "upstream proto=HTTP/2.0",
+          "status": "ok",
+          "group": "protocols",
+          "title": "HTTP/2 to the upstream (h2c)",
+          "seconds": 0.0
+        },
+        "tls_upstream": {
+          "detail": "listener=tls tls={'version': 'TLS1.3', 'sni': 'backend.lab', 'alpn': 'http/1.1'}",
+          "status": "ok",
+          "group": "protocols",
+          "title": "TLS re-encryption to the upstream (verified)",
+          "seconds": 0.01
+        },
+        "proxy_protocol_upstream": {
+          "status": "unsupported",
+          "detail": "no PROXY protocol towards upstreams",
+          "group": "protocols",
+          "title": "PROXY protocol v2 to the upstream",
+          "seconds": 0
+        },
+        "proxy_protocol_accept": {
+          "status": "unsupported",
+          "detail": "no PROXY protocol on listeners",
+          "group": "protocols",
+          "title": "Accept PROXY protocol from clients (:8082)",
+          "seconds": 0
+        },
+        "tcp_l4": {
+          "detail": "instance=app1 remote_addr=10.77.0.2:36430 headers=['Connection']",
+          "status": "ok",
+          "group": "protocols",
+          "title": "TCP (L4) proxying",
+          "seconds": 0.0
+        },
+        "udp_l4": {
+          "status": "unsupported",
+          "detail": "Pingora is TCP/HTTP only",
+          "group": "protocols",
+          "title": "UDP proxying",
+          "seconds": 0
+        },
+        "tls_passthrough_sni": {
+          "status": "unsupported",
+          "detail": "the L4 app in this proxy copies bytes; SNI parsing for passthrough is not implemented",
+          "group": "protocols",
+          "title": "TLS passthrough by SNI (L4)",
+          "seconds": 0
+        },
+        "tls_termination": {
+          "detail": "200 cert=CN = app.lab, O = pxlab TLSv1.3 X-Forwarded-Proto=https",
+          "status": "ok",
+          "group": "tls",
+          "title": "TLS termination",
+          "seconds": 0.04
+        },
+        "tls13": {
+          "detail": "TLSv1.3 TLS_AES_256_GCM_SHA384",
+          "status": "ok",
+          "group": "tls",
+          "title": "TLS 1.3 negotiated",
+          "seconds": 0.01
+        },
+        "tls_legacy_refused": {
+          "detail": "80B7752EFC7D0000:error:0A00042E:SSL routines:ssl3_read_bytes:tlsv1 alert protocol version:../ssl/record/rec_layer_s3.c:918:SSL alert number 70\nProtocol: TLSv1.1\n    Protocol  : TLSv1.1",
+          "status": "ok",
+          "group": "tls",
+          "title": "TLS 1.0/1.1 refused",
+          "seconds": 0.52
+        },
+        "mtls_client_cert": {
+          "detail": "without cert: ReadError: [SSL: TLSV13_ALERT_CERTIFICATE_REQUIRED] tlsv13 alert certificate req; with cert: 200; forwarded: {'X-Client-Cert-Org': 'pxlab'}",
+          "cert_headers": {
+            "X-Client-Cert-Org": "pxlab"
+          },
+          "status": "ok",
+          "group": "tls",
+          "title": "Mutual TLS (client certificate required)",
+          "seconds": 0.01
+        },
+        "sni_multi_cert": {
+          "detail": "app.lab -> CN = app.lab, O = pxlab; b.lab -> CN = b.lab, O = pxlab",
+          "status": "ok",
+          "group": "tls",
+          "title": "Multiple certificates selected by SNI",
+          "seconds": 0.08
+        },
+        "acme_auto_cert": {
+          "status": "unsupported",
+          "detail": "no ACME client (certificates come from files / callbacks)",
+          "group": "tls",
+          "title": "Automatic certificate via ACME (Pebble)",
+          "seconds": 0
+        },
+        "cache_hit": {
+          "detail": "origin app2#1 -> app2#1; X-Cache: MISS -> HIT age=0",
+          "status": "ok",
+          "group": "caching",
+          "title": "Response caching",
+          "seconds": 0.01
+        },
+        "cache_purge": {
+          "status": "unsupported",
+          "detail": "pingora-cache serves PURGE only for storages implementing purge; MemCache does in principle but the lab keeps it out of scope",
+          "group": "caching",
+          "title": "Cache purge",
+          "seconds": 0
+        },
+        "cache_stale_on_error": {
+          "status": "unsupported",
+          "detail": "stale-if-error is wired through should_serve_stale(); the in-memory cache expires objects before the lab's 2 s window",
+          "group": "caching",
+          "title": "Serve stale on upstream error",
+          "seconds": 0
+        },
+        "compress_gzip": {
+          "detail": "Content-Encoding=gzip 610 bytes (65536 uncompressed)",
+          "bytes": 610,
+          "status": "ok",
+          "group": "compression",
+          "title": "gzip compression",
+          "seconds": 0.0
+        },
+        "compress_brotli": {
+          "status": "unsupported",
+          "detail": "pingora's compression module in this build negotiates gzip/zstd (brotli support is feature-gated)",
+          "group": "compression",
+          "title": "Brotli compression",
+          "seconds": 0
+        },
+        "compress_zstd": {
+          "detail": "Content-Encoding=zstd 99 bytes (65536 uncompressed)",
+          "bytes": 99,
+          "status": "ok",
+          "group": "compression",
+          "title": "Zstandard compression",
+          "seconds": 0.0
+        },
+        "xff_headers": {
+          "detail": "XFF=10.77.0.1 Proto=http Host=app.lab X-Real-IP=10.77.0.1",
+          "status": "ok",
+          "group": "headers",
+          "title": "X-Forwarded-* headers",
+          "seconds": 0.0
+        },
+        "forwarded_rfc7239": {
+          "detail": "Forwarded='for=10.77.0.1;proto=http;host=app.lab'",
+          "status": "ok",
+          "group": "headers",
+          "title": "RFC 7239 Forwarded header",
+          "seconds": 0.0
+        },
+        "header_add_remove": {
+          "detail": "X-Lab-Proxy=pingora X-Powered-By=removed Server=pingora",
+          "status": "ok",
+          "group": "headers",
+          "title": "Header manipulation",
+          "seconds": 0.0
+        },
+        "request_id": {
+          "detail": "'bfcf047a-b8a9-41e1-9111-1388d1a44487' / '5537dab2-abd4-4823-9680-eb0368b860d9'",
+          "status": "ok",
+          "group": "headers",
+          "title": "Request ID generation",
+          "seconds": 0.0
+        },
+        "rate_limit": {
+          "detail": "codes={200: 10, 429: 30}",
+          "rejected": 30,
+          "status": "ok",
+          "group": "security",
+          "title": "Request rate limiting",
+          "seconds": 0.07
+        },
+        "connection_limit": {
+          "detail": "codes={200: 3, 429: 9}",
+          "rejected": 9,
+          "status": "ok",
+          "group": "security",
+          "title": "Concurrent connection limit",
+          "seconds": 1.01
+        },
+        "ip_allow_deny": {
+          "detail": "/allowed=200 /denied=403",
+          "status": "ok",
+          "group": "security",
+          "title": "IP allow / deny lists",
+          "seconds": 0.0
+        },
+        "basic_auth": {
+          "detail": "no creds=401 (Basic realm=\"pxlab\") creds=200",
+          "status": "ok",
+          "group": "security",
+          "title": "HTTP basic authentication",
+          "seconds": 0.0
+        },
+        "jwt_auth": {
+          "detail": "none=401 valid=200 bad-sig=401",
+          "status": "ok",
+          "group": "security",
+          "title": "JWT validation (HS256)",
+          "seconds": 0.01
+        },
+        "forward_auth": {
+          "status": "unsupported",
+          "detail": "no built-in subrequest to an authorizer (would be a hand-written upstream call)",
+          "group": "security",
+          "title": "External authorization (forward auth / auth_request / ext_authz)",
+          "seconds": 0
+        },
+        "cors": {
+          "detail": "204 ACAO=https://example.com methods=GET, POST, PUT, DELETE, OPTIONS",
+          "status": "ok",
+          "group": "security",
+          "title": "CORS preflight answered by the proxy",
+          "seconds": 0.0
+        },
+        "security_headers": {
+          "detail": "{'strict-transport-security': 'max-age=31536000; includeSubDomains', 'x-content-type-options': 'nosniff', 'x-frame-options': 'DENY', 'referrer-policy': 'strict-origin-when-cross-origin'}",
+          "status": "ok",
+          "group": "security",
+          "title": "Security response headers",
+          "seconds": 0.0
+        },
+        "body_size_limit": {
+          "detail": "2MiB=413 100KiB=200",
+          "status": "ok",
+          "group": "security",
+          "title": "Request body size limit",
+          "seconds": 0.01
+        },
+        "upstream_timeout": {
+          "detail": "502 after 2.01s",
+          "seconds": 2.01,
+          "status": "ok",
+          "group": "security",
+          "title": "Upstream read timeout"
+        },
+        "fault_injection": {
+          "detail": "503 share=0.28 codes={503: 28, 200: 72}",
+          "share": 0.28,
+          "status": "ok",
+          "group": "security",
+          "title": "Fault injection",
+          "seconds": 0.24
+        },
+        "bandwidth_limit": {
+          "status": "unsupported",
+          "detail": "no built-in bandwidth limiting (body filters are synchronous)",
+          "group": "security",
+          "title": "Bandwidth limiting",
+          "seconds": 0
+        },
+        "static_files": {
+          "detail": "200 '<!doctype html><title>pxlab static</title><p>pxlab static fi' x-instance=None",
+          "status": "ok",
+          "group": "operations",
+          "title": "Static file serving",
+          "seconds": 0.0
+        },
+        "custom_error_page": {
+          "detail": "503 X-Error-Page=custom body='<!doctype html><title>pxlab error</title><h1>Custom error pa'",
+          "status": "ok",
+          "group": "operations",
+          "title": "Custom error page",
+          "seconds": 0.0
+        },
+        "hot_reload": {
+          "detail": "reload rc=1 '[2026-09-13T18:48:34Z ERROR pingora_core::server::transfer_fd] No incoming socket transfer, sleep 1s and try again\\n[2026'; then 200",
+          "status": "fail",
+          "group": "operations",
+          "title": "Configuration reload without restart",
+          "seconds": 6.1
+        },
+        "access_log_json": {
+          "detail": "json keys: ['cache', 'duration_ms', 'error', 'host', 'method', 'remote_addr', 'status', 'time', 'tries', 'upstream', 'uri']",
+          "status": "ok",
+          "group": "operations",
+          "title": "Structured (JSON) access log",
+          "seconds": 1.54
+        },
+        "metrics_prometheus": {
+          "detail": "200 252 samples e.g. pingora_http_request_duration_seconds_bucket{host=\"\",le=\"0.005\"} 3",
+          "status": "ok",
+          "group": "operations",
+          "title": "Prometheus metrics",
+          "seconds": 0.07
+        },
+        "admin_api": {
+          "detail": "GET / -> 200 '{\"outliers\":[],\"proxy\":\"pingora-lab\",\"requests_seen\":866,\"uptime_s\":24,\"version\"'",
+          "status": "ok",
+          "group": "operations",
+          "title": "Admin / stats / runtime API",
+          "seconds": 0.05
+        },
+        "tracing_otel": {
+          "status": "unsupported",
+          "detail": "no OpenTelemetry integration in this binary",
+          "group": "operations",
+          "title": "Distributed tracing (OpenTelemetry -> Jaeger)",
+          "seconds": 0
+        },
+        "docker_label_discovery": {
+          "status": "unsupported",
+          "detail": "no Docker provider",
+          "group": "operations",
+          "title": "Service discovery from Docker labels",
+          "seconds": 0
+        }
+      },
+      "summary": {
+        "ok": 53,
+        "fail": 1,
+        "error": 0,
+        "unsupported": 15
+      },
+      "_seconds": 22.8
+    }
+  },
+  "finished": "2026-09-13T18:48:42+00:00"
+}

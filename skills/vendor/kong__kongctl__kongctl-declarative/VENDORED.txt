@@ -1,0 +1,6 @@
+Vendored from: https://github.com/Kong/kongctl
+Path in upstream repo: skills/kongctl-declarative
+Upstream commit: ee2be3d (2026-09-12)
+License: Apache-2.0 (see LICENSE)
+Vendored on: 2026-09-13
+Unmodified copy; kept for the reverse-proxies lab (skills/README.md explains why).

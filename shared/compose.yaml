@@ -1,0 +1,115 @@
+# pxlab shared stack: the origins every proxy stack points at (+ ACME test CA, tracing sink, a label-discoverable container).
+# Started once (`pxlab shared up`); proxy stacks join the external `pxlab` network. Backends are pinned to CPUs 4-9 (+HT
+# siblings 18-23) so they never compete with the proxy under test (CPUs 0-3) or the load generator (10-13, 24-27).
+name: pxlab-shared
+
+x-backend: &backend
+  image: pxlab-backend:latest
+  build: ./backend
+  cpuset: "4-9,18-23"
+  volumes:
+    - ./certs:/certs:ro
+  ulimits:
+    nofile: { soft: 1048576, hard: 1048576 }
+  restart: unless-stopped
+
+services:
+  app1:
+    <<: *backend
+    container_name: pxlab-app1
+    environment: { INSTANCE: app1, POOL: app }
+    networks: { pxlab: { ipv4_address: 10.77.0.11 } }
+    ports: ["18101:8080"]
+  app2:
+    <<: *backend
+    container_name: pxlab-app2
+    environment: { INSTANCE: app2, POOL: app }
+    networks: { pxlab: { ipv4_address: 10.77.0.12 } }
+    ports: ["18102:8080"]
+  app3:
+    <<: *backend
+    container_name: pxlab-app3
+    environment: { INSTANCE: app3, POOL: app }
+    networks: { pxlab: { ipv4_address: 10.77.0.13 } }
+    ports: ["18103:8080"]
+  slow:                                   # every response delayed 100 ms: exposes least-connections vs round-robin
+    <<: *backend
+    container_name: pxlab-slow
+    environment: { INSTANCE: slow, POOL: app, DELAY_MS: "100" }
+    networks: { pxlab: { ipv4_address: 10.77.0.14 } }
+    ports: ["18104:8080"]
+  flaky:                                  # FAIL_RATE toggled at run time: exposes outlier detection / circuit breaking
+    <<: *backend
+    container_name: pxlab-flaky
+    environment: { INSTANCE: flaky, POOL: app }
+    networks: { pxlab: { ipv4_address: 10.77.0.15 } }
+    ports: ["18105:8080"]
+  canary:
+    <<: *backend
+    container_name: pxlab-canary
+    environment: { INSTANCE: canary, POOL: canary }
+    networks: { pxlab: { ipv4_address: 10.77.0.16 } }
+    ports: ["18106:8080"]
+  shadow:                                 # receives mirrored traffic only
+    <<: *backend
+    container_name: pxlab-shadow
+    environment: { INSTANCE: shadow, POOL: shadow }
+    networks: { pxlab: { ipv4_address: 10.77.0.17 } }
+    ports: ["18107:8080"]
+  b1:                                     # the `b.lab` pool
+    <<: *backend
+    container_name: pxlab-b1
+    environment: { INSTANCE: b1, POOL: b }
+    networks: { pxlab: { ipv4_address: 10.77.0.18 } }
+    ports: ["18108:8080"]
+
+  pebble:                                 # Let's Encrypt's ACME test server: proxies obtain certs for acme.lab from it
+    image: ghcr.io/letsencrypt/pebble:latest
+    container_name: pxlab-pebble
+    command: ["-config", "/config/pebble-config.json", "-dnsserver", "127.0.0.11:53"]
+    environment:
+      PEBBLE_VA_NOSLEEP: "1"
+      PEBBLE_WFE_NONCEREJECT: "0"
+    volumes:
+      - ./pebble/pebble-config.json:/config/pebble-config.json:ro
+    networks: { pxlab: { ipv4_address: 10.77.0.30 } }
+    ports: ["14000:14000", "15000:15000"]
+    restart: unless-stopped
+
+  jaeger:                                 # OTLP sink + query API for the tracing probe
+    image: jaegertracing/jaeger:2.9.0
+    container_name: pxlab-jaeger
+    networks: { pxlab: { ipv4_address: 10.77.0.31 } }
+    ports: ["16686:16686", "4317:4317", "4318:4318"]
+    restart: unless-stopped
+
+  static:                                 # static origin for proxies without a file server (error pages / 405)
+    image: nginx:1.29-otel
+    container_name: pxlab-static
+    volumes:
+      - ./staticsrv/default.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./static:/static:ro
+      - ./certs:/certs:ro
+    networks: { pxlab: { ipv4_address: 10.77.0.33 } }
+    restart: unless-stopped
+
+  whoami:                                 # discovered through Docker labels (Traefik's docker provider)
+    image: traefik/whoami:latest
+    container_name: pxlab-whoami
+    networks: { pxlab: { ipv4_address: 10.77.0.32 } }
+    labels:
+      traefik.enable: "true"
+      traefik.docker.network: "pxlab"
+      traefik.http.routers.whoami.rule: "Host(`whoami.lab`)"
+      traefik.http.routers.whoami.entrypoints: "web"
+      traefik.http.services.whoami.loadbalancer.server.port: "80"
+    restart: unless-stopped
+
+networks:
+  pxlab:
+    name: pxlab
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 10.77.0.0/24
+          gateway: 10.77.0.1

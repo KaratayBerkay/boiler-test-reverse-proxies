@@ -1,0 +1,136 @@
+{
+  "stack": "apache",
+  "display": "Apache httpd 2.4",
+  "image": "httpd:2.4",
+  "family": "c",
+  "category": "the classic modular web server (C) used as a reverse proxy: mod_proxy + balancer + hcheck + cache + md",
+  "run_id": "20260913-201632-f2bcaa",
+  "started": "2026-09-13T17:16:32+00:00",
+  "notes": "Official httpd 2.4 image, event MPM sized for 4 cores. Demonstrates mod_proxy (http/h2c/ws/tls upstreams), mod_proxy_balancer (byrequests, bybusyness, loadfactor, stickysession, failonstatus), mod_proxy_hcheck active health checks, mod_cache_disk with CacheStaleOnError, mod_deflate + mod_brotli, mod_ratelimit bandwidth limiting, mod_remoteip PROXY protocol, mod_md ACME against Pebble (activated by a graceful reload from MDMessageCmd), mTLS with SSL_CLIENT_S_DN_CN, mod_unique_id request ids, JSON access log and a Prometheus exporter sidecar. No HTTP/3, no L4, no rate limiting, no JWT/forward auth without third-party modules.",
+  "docs": [
+    "https://hub.docker.com/_/httpd",
+    "https://httpd.apache.org/docs/2.4/mod/mod_proxy.html",
+    "https://httpd.apache.org/docs/2.4/mod/mod_proxy_balancer.html",
+    "https://httpd.apache.org/docs/2.4/mod/mod_md.html",
+    "https://httpd.apache.org/docs/2.4/mod/mod_cache.html"
+  ],
+  "image_size": "175 MB",
+  "startup_s": null,
+  "version": "Server version: Apache/2.4.68 (Unix)",
+  "containers": [
+    "pxlab-apache",
+    "pxlab-apache-exporter"
+  ],
+  "unsupported": {
+    "lb_hash_header": "mod_proxy_balancer has byrequests / bytraffic / bybusyness / heartbeat only - no consistent hashing",
+    "lb_mirror": "no request mirroring in mod_proxy",
+    "proxy_protocol_upstream": "mod_proxy cannot send PROXY protocol to upstreams (mod_remoteip only accepts it)",
+    "tcp_l4": "httpd is HTTP-only (no generic TCP proxying)",
+    "udp_l4": "httpd is HTTP-only",
+    "tls_passthrough_sni": "no L4 passthrough (mod_proxy terminates or re-encrypts TLS)",
+    "http3": "no HTTP/3 in httpd (mod_http2 stops at HTTP/2)",
+    "cache_purge": "mod_cache has no purge API (htcacheclean works offline on the disk cache)",
+    "compress_zstd": "no zstd output filter (mod_deflate = gzip, mod_brotli = br)",
+    "rate_limit": "no request-rate limiting in the standard modules (mod_ratelimit is bandwidth only; mod_qos / mod_evasive are third-party)",
+    "connection_limit": "no per-client concurrency limit in the standard modules (mod_qos is third-party)",
+    "jwt_auth": "JWT validation needs a third-party module (mod_auth_openidc, mod_authnz_jwt)",
+    "forward_auth": "no auth_request-style subrequest to an external authorizer in httpd core",
+    "tracing_otel": "the OpenTelemetry Apache module (otel-webserver-module) is a separate build",
+    "docker_label_discovery": "no Docker provider"
+  },
+  "phases": {
+    "capabilities": {
+      "ready_s": 0.0,
+      "probes": {
+        "route_redirect": {
+          "detail": "301 Location=http://app.lab:18080/landing",
+          "status": "ok",
+          "group": "routing",
+          "title": "Redirect issued by the proxy",
+          "seconds": 0.0
+        },
+        "lb_least_conn": {
+          "detail": "slow share=0.33 {'app1': 100, 'app2': 100, 'slow': 100}",
+          "share": 0.3333333333333333,
+          "status": "fail",
+          "group": "load-balancing",
+          "title": "Least-connections",
+          "seconds": 0.72
+        },
+        "lb_active_health": {
+          "detail": "while unhealthy: {'app1': 10, 'app2': 10, 'app3': 10} app3 hits=10; re-admitted after 0.0s",
+          "readmit_s": 0.0,
+          "status": "fail",
+          "group": "load-balancing",
+          "title": "Active health checks",
+          "seconds": 8.28
+        },
+        "tls_upstream": {
+          "detail": "listener=tls tls={'version': 'TLS1.3', 'sni': 'app1', 'alpn': ''}",
+          "status": "ok",
+          "group": "protocols",
+          "title": "TLS re-encryption to the upstream (verified)",
+          "seconds": 0.01
+        },
+        "acme_auto_cert": {
+          "detail": "subject=CN = Apache Managed Domain Fallback issuer=CN = Apache Managed Domain Fallback sans=DNS:acme.lab",
+          "status": "fail",
+          "group": "tls",
+          "title": "Automatic certificate via ACME (Pebble)",
+          "seconds": 91.37
+        },
+        "cache_hit": {
+          "detail": "origin app2#1 -> app2#1; X-Cache: MISS from app.lab -> HIT from app.lab age=0",
+          "status": "ok",
+          "group": "caching",
+          "title": "Response caching",
+          "seconds": 0.01
+        },
+        "cache_stale_on_error": {
+          "detail": "first 200 origin=app3#1; after expiry with origin 503: 200 origin=app3#1 X-Cache=HIT from app.lab",
+          "status": "ok",
+          "group": "caching",
+          "title": "Serve stale on upstream error",
+          "seconds": 2.61
+        },
+        "header_add_remove": {
+          "detail": "X-Lab-Proxy=apache X-Powered-By=removed Server=lab-backend/1.0",
+          "status": "ok",
+          "group": "headers",
+          "title": "Header manipulation",
+          "seconds": 0.0
+        },
+        "body_size_limit": {
+          "detail": "2MiB=413 100KiB=200",
+          "status": "ok",
+          "group": "security",
+          "title": "Request body size limit",
+          "seconds": 0.01
+        },
+        "upstream_timeout": {
+          "detail": "502 after 2.01s",
+          "seconds": 2.01,
+          "status": "ok",
+          "group": "security",
+          "title": "Upstream read timeout"
+        },
+        "fault_injection": {
+          "detail": "503 share=0.22 codes={200: 78, 503: 22}",
+          "share": 0.22,
+          "status": "ok",
+          "group": "security",
+          "title": "Fault injection",
+          "seconds": 0.23
+        }
+      },
+      "summary": {
+        "ok": 8,
+        "fail": 3,
+        "error": 0,
+        "unsupported": 0
+      },
+      "_seconds": 107.4
+    }
+  },
+  "finished": "2026-09-13T17:18:20+00:00"
+}

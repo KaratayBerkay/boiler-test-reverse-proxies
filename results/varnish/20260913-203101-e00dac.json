@@ -1,0 +1,101 @@
+{
+  "stack": "varnish",
+  "display": "Varnish 8 + hitch",
+  "image": "varnish:8.0",
+  "family": "cache",
+  "category": "HTTP accelerator / caching reverse proxy (C, VCL-programmable) with hitch for TLS",
+  "run_id": "20260913-203101-e00dac",
+  "started": "2026-09-13T17:31:01+00:00",
+  "notes": "Official varnish:8.0 image (ships vmod_vsthrottle, digest, reqwest, saintmode, fileserver, uuid, cookie ...) behind hitch for TLS (PROXY v2 between them, h2 via ALPN, mTLS on :8444). VCL implements routing, shard hashing, cookie stickiness, saintmode outlier ejection, retries, grace (stale-on-error), PURGE, vsthrottle rate limiting, JWT verification with vmod_digest, forward auth and a TLS/h2 backend with vmod_reqwest, static files with vmod_fileserver and custom error pages. varnishncsa and a Prometheus exporter run as sidecars on the shared VSM directory; varnishreload swaps VCL without dropping connections. No HTTP/3, gRPC, L4, ACME or brotli.",
+  "docs": [
+    "https://hub.docker.com/_/varnish",
+    "https://varnish-cache.org/docs/8.0/users-guide/vcl.html",
+    "https://varnish-cache.org/docs/8.0/reference/vmod_directors.html",
+    "https://github.com/varnish/hitch/blob/master/docs/configuration.md",
+    "https://github.com/varnish/varnish-modules"
+  ],
+  "image_size": "458 MB",
+  "startup_s": null,
+  "version": "varnishd (varnish-8.0.2 revision fb46a7bb50531f1a86e17173aa64116fd98a8b86)",
+  "containers": [
+    "pxlab-varnish",
+    "pxlab-hitch",
+    "pxlab-varnish-log",
+    "pxlab-varnish-exporter"
+  ],
+  "unsupported": {
+    "lb_least_conn": "vmod_directors has round_robin / random / fallback / hash / shard - no least-connections director",
+    "lb_mirror": "no request mirroring",
+    "h2_upstream": "Varnish speaks HTTP/1.1 to backends; h2 is only available via vmod_reqwest over TLS (used for tls.lab)",
+    "tcp_l4": "Varnish is HTTP-only",
+    "udp_l4": "Varnish is HTTP-only",
+    "tls_passthrough_sni": "no L4 passthrough (hitch terminates TLS)",
+    "http3": "no HTTP/3 in Varnish Cache or hitch (Varnish Enterprise / a QUIC terminator in front)",
+    "grpc": "no gRPC: Varnish cannot proxy HTTP/2 with trailers to backends",
+    "acme_auto_cert": "hitch has no ACME client (use certbot/lego and reload hitch)",
+    "connection_limit": "no per-client concurrency limit (vsthrottle is a request-rate limiter)",
+    "bandwidth_limit": "no bandwidth limiting in Varnish Cache (Enterprise has vmod_tcp/..)",
+    "compress_brotli": "Varnish compresses with gzip only",
+    "compress_zstd": "gzip only",
+    "tracing_otel": "no OpenTelemetry in Varnish Cache",
+    "docker_label_discovery": "no Docker provider"
+  },
+  "phases": {
+    "capabilities": {
+      "ready_s": 0.1,
+      "probes": {
+        "sse_streaming": {
+          "detail": "events=5 first=0.0s total=1.20s",
+          "status": "ok",
+          "group": "protocols",
+          "title": "Server-sent events (no response buffering)",
+          "seconds": 1.2
+        },
+        "proxy_protocol_accept": {
+          "detail": "X-Forwarded-For=203.0.113.9 remote_addr=10.77.0.2:60712",
+          "status": "ok",
+          "group": "protocols",
+          "title": "Accept PROXY protocol from clients (:8082)",
+          "seconds": 0.0
+        },
+        "tcp_l4": {
+          "status": "unsupported",
+          "detail": "Varnish is HTTP-only",
+          "group": "protocols",
+          "title": "TCP (L4) proxying",
+          "seconds": 0
+        },
+        "tls_termination": {
+          "detail": "200 cert=CN = app.lab, O = pxlab TLSv1.3 X-Forwarded-Proto=https",
+          "status": "ok",
+          "group": "tls",
+          "title": "TLS termination",
+          "seconds": 0.06
+        },
+        "mtls_client_cert": {
+          "detail": "without cert: ReadError: [SSL: TLSV13_ALERT_CERTIFICATE_REQUIRED] tlsv13 alert certificate req; with cert: 200; forwarded: {}",
+          "cert_headers": {},
+          "status": "ok",
+          "group": "tls",
+          "title": "Mutual TLS (client certificate required)",
+          "seconds": 0.03
+        },
+        "sni_multi_cert": {
+          "detail": "app.lab -> CN = app.lab, O = pxlab; b.lab -> CN = b.lab, O = pxlab",
+          "status": "ok",
+          "group": "tls",
+          "title": "Multiple certificates selected by SNI",
+          "seconds": 0.08
+        }
+      },
+      "summary": {
+        "ok": 5,
+        "fail": 0,
+        "error": 0,
+        "unsupported": 1
+      },
+      "_seconds": 3.7
+    }
+  },
+  "finished": "2026-09-13T17:31:04+00:00"
+}

@@ -1,0 +1,51 @@
+# NGINX 1.29 (open source, official image with the otel/njs/acme dynamic modules) + prometheus exporter sidecar.
+name: pxlab-nginx
+services:
+  proxy:
+    image: nginx:1.29-otel
+    container_name: pxlab-nginx
+    cpuset: "0-3"
+    # the config DIRECTORY is mounted (a single-file bind mount keeps the old inode when an editor/sed replaces the file)
+    command: ["nginx", "-c", "/etc/nginx/lab/nginx.conf", "-g", "daemon off;"]
+    volumes:
+      - ./:/etc/nginx/lab:ro
+      - ../../shared/certs:/certs:ro
+      - ../../shared/auth:/auth:ro
+      - ../../shared/static:/static:ro
+      - nginx-cache:/var/cache/nginx
+    ports:
+      - "18080:8080"
+      - "18443:8443"
+      - "18443:8443/udp"
+      - "18444:8444"
+      - "18445:8445"
+      - "18082:8082"
+      - "19000:9000"
+      - "19001:9001/udp"
+      - "19101:9101"
+    ulimits:
+      nofile: { soft: 1048576, hard: 1048576 }
+    networks:
+      pxlab:
+        aliases: [proxy, app.lab, a.lab, b.lab, acme.lab, redirect.lab]
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:9101/healthz"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+  exporter:
+    image: nginx/nginx-prometheus-exporter:1.4
+    container_name: pxlab-nginx-exporter
+    command: ["--nginx.scrape-uri=http://proxy:9101/nginx_status"]
+    cpuset: "0-3"
+    ports: ["19100:9113"]
+    networks: [pxlab]
+    depends_on:
+      proxy:
+        condition: service_healthy
+volumes:
+  nginx-cache:
+networks:
+  pxlab:
+    external: true
+    name: pxlab

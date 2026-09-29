@@ -1,0 +1,39 @@
+# HAProxy 3.4 LTS (official image, master-worker mode; native QUIC/HTTP/3, ACME, Lua, Prometheus exporter built in).
+name: pxlab-haproxy
+services:
+  proxy:
+    image: haproxy:lts
+    container_name: pxlab-haproxy
+    cpuset: "0-3"
+    volumes:
+      - ./:/usr/local/etc/haproxy:ro          # haproxy.cfg + lab.lua + errors/ (directory mount survives editor renames)
+      - ../../shared/certs:/certs:ro
+      - ../../shared/static:/static:ro
+    ports:
+      - "18080:8080"
+      - "18443:8443"
+      - "18443:8443/udp"
+      - "18444:8444"
+      - "18445:8445"
+      - "18082:8082"
+      - "19000:9000"
+      - "19100:9100"
+      - "19101:9101"
+      - "19999:9999"
+    ulimits:
+      nofile: { soft: 1048576, hard: 1048576 }
+    sysctls:
+      net.ipv4.ip_unprivileged_port_start: 0    # the haproxy user binds :80 (ACME HTTP-01)
+    networks:
+      pxlab:
+        aliases: [proxy, app.lab, a.lab, b.lab, acme.lab, redirect.lab]
+    healthcheck:
+      # no curl in the image: ask the runtime API (bash /dev/tcp) whether the worker answers
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/9999 && echo 'show info' >&3 && timeout 2 grep -q -m1 Uptime <&3"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+networks:
+  pxlab:
+    external: true
+    name: pxlab

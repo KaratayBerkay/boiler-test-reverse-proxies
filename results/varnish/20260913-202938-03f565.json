@@ -1,0 +1,558 @@
+{
+  "stack": "varnish",
+  "display": "Varnish 8 + hitch",
+  "image": "varnish:8.0",
+  "family": "cache",
+  "category": "HTTP accelerator / caching reverse proxy (C, VCL-programmable) with hitch for TLS",
+  "run_id": "20260913-202938-03f565",
+  "started": "2026-09-13T17:29:38+00:00",
+  "notes": "Official varnish:8.0 image (ships vmod_vsthrottle, digest, reqwest, saintmode, fileserver, uuid, cookie ...) behind hitch for TLS (PROXY v2 between them, h2 via ALPN, mTLS on :8444). VCL implements routing, shard hashing, cookie stickiness, saintmode outlier ejection, retries, grace (stale-on-error), PURGE, vsthrottle rate limiting, JWT verification with vmod_digest, forward auth and a TLS/h2 backend with vmod_reqwest, static files with vmod_fileserver and custom error pages. varnishncsa and a Prometheus exporter run as sidecars on the shared VSM directory; varnishreload swaps VCL without dropping connections. No HTTP/3, gRPC, L4, ACME or brotli.",
+  "docs": [
+    "https://hub.docker.com/_/varnish",
+    "https://varnish-cache.org/docs/8.0/users-guide/vcl.html",
+    "https://varnish-cache.org/docs/8.0/reference/vmod_directors.html",
+    "https://github.com/varnish/hitch/blob/master/docs/configuration.md",
+    "https://github.com/varnish/varnish-modules"
+  ],
+  "image_size": "458 MB",
+  "startup_s": null,
+  "version": "varnishd (varnish-8.0.2 revision fb46a7bb50531f1a86e17173aa64116fd98a8b86)",
+  "containers": [
+    "pxlab-varnish",
+    "pxlab-hitch",
+    "pxlab-varnish-log",
+    "pxlab-varnish-exporter"
+  ],
+  "unsupported": {
+    "lb_least_conn": "vmod_directors has round_robin / random / fallback / hash / shard - no least-connections director",
+    "lb_mirror": "no request mirroring",
+    "h2_upstream": "Varnish speaks HTTP/1.1 to backends; h2 is only available via vmod_reqwest over TLS (used for tls.lab)",
+    "tcp_l4": "Varnish is HTTP-only",
+    "udp_l4": "Varnish is HTTP-only",
+    "tls_passthrough_sni": "no L4 passthrough (hitch terminates TLS)",
+    "http3": "no HTTP/3 in Varnish Cache or hitch (Varnish Enterprise / a QUIC terminator in front)",
+    "grpc": "no gRPC: Varnish cannot proxy HTTP/2 with trailers to backends",
+    "acme_auto_cert": "hitch has no ACME client (use certbot/lego and reload hitch)",
+    "connection_limit": "no per-client concurrency limit (vsthrottle is a request-rate limiter)",
+    "bandwidth_limit": "no bandwidth limiting in Varnish Cache (Enterprise has vmod_tcp/..)",
+    "compress_brotli": "Varnish compresses with gzip only",
+    "compress_zstd": "gzip only",
+    "tracing_otel": "no OpenTelemetry in Varnish Cache",
+    "docker_label_discovery": "no Docker provider"
+  },
+  "phases": {
+    "capabilities": {
+      "ready_s": 0.1,
+      "probes": {
+        "route_host": {
+          "detail": "a.lab -> app2 (X-Route=a), b.lab -> b1",
+          "status": "ok",
+          "group": "routing",
+          "title": "Host-based routing",
+          "seconds": 0.01
+        },
+        "route_path_prefix": {
+          "detail": "upstream path=/hello query=x=1 X-Route=api",
+          "status": "ok",
+          "group": "routing",
+          "title": "Path prefix route + strip prefix",
+          "seconds": 0.0
+        },
+        "route_path_regex": {
+          "detail": "path=/v2/things X-Route=versioned",
+          "status": "ok",
+          "group": "routing",
+          "title": "Regex path route",
+          "seconds": 0.0
+        },
+        "route_rewrite": {
+          "detail": "upstream path=/new/thing X-Route=rewritten",
+          "status": "ok",
+          "group": "routing",
+          "title": "URL rewrite (regex capture)",
+          "seconds": 0.0
+        },
+        "route_redirect": {
+          "detail": "301 Location=/landing",
+          "status": "ok",
+          "group": "routing",
+          "title": "Redirect issued by the proxy",
+          "seconds": 0.0
+        },
+        "route_header": {
+          "detail": "instance=canary",
+          "status": "ok",
+          "group": "routing",
+          "title": "Header-based routing",
+          "seconds": 0.0
+        },
+        "route_query": {
+          "detail": "instance=canary",
+          "status": "ok",
+          "group": "routing",
+          "title": "Query-parameter routing",
+          "seconds": 0.0
+        },
+        "route_method": {
+          "detail": "DELETE -> 405 (x-instance=None)",
+          "status": "ok",
+          "group": "routing",
+          "title": "Method-based rule",
+          "seconds": 0.0
+        },
+        "redirect_https": {
+          "detail": "301 Location=https://redirect.lab/x?q=1",
+          "status": "ok",
+          "group": "routing",
+          "title": "HTTP -> HTTPS redirect",
+          "seconds": 0.0
+        },
+        "lb_round_robin": {
+          "detail": {
+            "app3": 10,
+            "app1": 10,
+            "app2": 10
+          },
+          "status": "ok",
+          "group": "load-balancing",
+          "title": "Round-robin over 3 backends",
+          "seconds": 0.07
+        },
+        "lb_weighted": {
+          "detail": "app1 share=0.82 {'app1': 82, 'app2': 18}",
+          "share": 0.82,
+          "status": "ok",
+          "group": "load-balancing",
+          "title": "Weighted round-robin (3:1)",
+          "seconds": 0.28
+        },
+        "lb_least_conn": {
+          "status": "unsupported",
+          "detail": "vmod_directors has round_robin / random / fallback / hash / shard - no least-connections director",
+          "group": "load-balancing",
+          "title": "Least-connections",
+          "seconds": 0
+        },
+        "lb_hash_header": {
+          "detail": "u1 -> {'app2': 20}; 10 users -> {'app1': 18, 'app3': 3, 'app2': 9}",
+          "status": "ok",
+          "group": "load-balancing",
+          "title": "Consistent hashing on a header",
+          "seconds": 0.17
+        },
+        "lb_sticky_cookie": {
+          "detail": "cookie='lab_sticky=app3; Path=/; HttpOnly' first=app3 then={'app3': 12}",
+          "status": "ok",
+          "group": "load-balancing",
+          "title": "Cookie stickiness",
+          "seconds": 0.05
+        },
+        "lb_retry_dead_member": {
+          "detail": "codes={200: 30} max_ms=4",
+          "max_ms": 3.8,
+          "status": "ok",
+          "group": "load-balancing",
+          "title": "Retry on connect failure",
+          "seconds": 0.09
+        },
+        "lb_outlier_ejection": {
+          "detail": "first20={200: 20} last20={200: 40} flaky hits in last 20=0",
+          "errors_first20": 0,
+          "errors_last20": -20,
+          "flaky_hits_last20": 0,
+          "status": "ok",
+          "group": "load-balancing",
+          "title": "Passive health / outlier ejection",
+          "seconds": 1.69
+        },
+        "lb_active_health": {
+          "detail": "ejected after 2.1s; while unhealthy: {'app2': 15, 'app1': 15} app3 hits=0; re-admitted after 2.2s",
+          "eject_s": 2.1,
+          "readmit_s": 2.2,
+          "status": "ok",
+          "group": "load-balancing",
+          "title": "Active health checks",
+          "seconds": 4.55
+        },
+        "lb_canary_split": {
+          "detail": "canary share=0.110 {'app1': 70, 'app3': 56, 'canary': 22, 'app2': 52}",
+          "share": 0.11,
+          "status": "ok",
+          "group": "load-balancing",
+          "title": "Weighted traffic split (canary)",
+          "seconds": 0.64
+        },
+        "lb_mirror": {
+          "status": "unsupported",
+          "detail": "no request mirroring",
+          "group": "load-balancing",
+          "title": "Request mirroring / shadowing",
+          "seconds": 0
+        },
+        "lb_upstream_keepalive": {
+          "detail": "new upstream connections for 60 requests: {'app3': 2, 'app1': 2, 'app2': 2}",
+          "upstream_connections": 6,
+          "status": "ok",
+          "group": "load-balancing",
+          "title": "Upstream connection pooling",
+          "seconds": 0.32
+        },
+        "http2_tls": {
+          "detail": "HTTP/2 200 upstream proto=HTTP/1.1",
+          "status": "ok",
+          "group": "protocols",
+          "title": "HTTP/2 (TLS, ALPN)",
+          "seconds": 0.01
+        },
+        "h2c_frontend": {
+          "detail": "status=200 body=b'{\\n \"instance\": \"app3\",\\n \"pool\": \"app\",\\n '",
+          "status": "ok",
+          "group": "protocols",
+          "title": "HTTP/2 cleartext (prior knowledge) on :8080",
+          "seconds": 0.0
+        },
+        "http3": {
+          "status": "unsupported",
+          "detail": "no HTTP/3 in Varnish Cache or hitch (Varnish Enterprise / a QUIC terminator in front)",
+          "group": "protocols",
+          "title": "HTTP/3 (QUIC)",
+          "seconds": 0
+        },
+        "websocket": {
+          "detail": "text echo='hello' binary 4096=4096 instance=app1",
+          "status": "ok",
+          "group": "protocols",
+          "title": "WebSocket proxying",
+          "seconds": 0.02
+        },
+        "sse_streaming": {
+          "detail": "events=5 first=1.2s total=1.20s",
+          "status": "fail",
+          "group": "protocols",
+          "title": "Server-sent events (no response buffering)",
+          "seconds": 1.21
+        },
+        "grpc": {
+          "status": "unsupported",
+          "detail": "no gRPC: Varnish cannot proxy HTTP/2 with trailers to backends",
+          "group": "protocols",
+          "title": "gRPC proxying (h2 -> upstream h2c :9090)",
+          "seconds": 0
+        },
+        "h2_upstream": {
+          "status": "unsupported",
+          "detail": "Varnish speaks HTTP/1.1 to backends; h2 is only available via vmod_reqwest over TLS (used for tls.lab)",
+          "group": "protocols",
+          "title": "HTTP/2 to the upstream (h2c)",
+          "seconds": 0
+        },
+        "tls_upstream": {
+          "detail": "listener=tls tls={'version': 'TLS1.3', 'sni': 'app1', 'alpn': ''}",
+          "status": "ok",
+          "group": "protocols",
+          "title": "TLS re-encryption to the upstream (verified)",
+          "seconds": 0.01
+        },
+        "proxy_protocol_upstream": {
+          "detail": "listener=pp proxy_protocol={'version': 2, 'src_ip': '10.77.0.1', 'src_port': 41284, 'dst_ip': '10.77.0.2', 'dst_port': 8080, 'protocol': '0x11'}",
+          "status": "ok",
+          "group": "protocols",
+          "title": "PROXY protocol v2 to the upstream",
+          "seconds": 0.0
+        },
+        "proxy_protocol_accept": {
+          "detail": "response: b'HTTP/1.1 200 OK\\r\\nCache-Control: no-store\\r\\nContent-Type: application/json\\r\\nX-Instance: app2\\r\\nX-Pool: app\\r\\nDate: Sun, 13 Sep 2026 17:29:49 GMT\\r\\nVary: Accept-Encod'",
+          "status": "fail",
+          "group": "protocols",
+          "title": "Accept PROXY protocol from clients (:8082)",
+          "seconds": 0.0
+        },
+        "tcp_l4": {
+          "status": "unsupported",
+          "detail": "Varnish is HTTP-only",
+          "group": "protocols",
+          "title": "TCP (L4) proxying",
+          "seconds": 0
+        },
+        "udp_l4": {
+          "status": "unsupported",
+          "detail": "Varnish is HTTP-only",
+          "group": "protocols",
+          "title": "UDP proxying",
+          "seconds": 0
+        },
+        "tls_passthrough_sni": {
+          "status": "unsupported",
+          "detail": "no L4 passthrough (hitch terminates TLS)",
+          "group": "protocols",
+          "title": "TLS passthrough by SNI (L4)",
+          "seconds": 0
+        },
+        "tls_termination": {
+          "detail": "200 cert=CN = app.lab, O = pxlab TLSv1.3 X-Forwarded-Proto=https",
+          "status": "ok",
+          "group": "tls",
+          "title": "TLS termination",
+          "seconds": 0.05
+        },
+        "tls13": {
+          "detail": "TLSv1.3 TLS_AES_256_GCM_SHA384",
+          "status": "ok",
+          "group": "tls",
+          "title": "TLS 1.3 negotiated",
+          "seconds": 0.01
+        },
+        "tls_legacy_refused": {
+          "detail": "8057A57B8E7D0000:error:8000006F:system library:BIO_connect:Connection refused:../crypto/bio/bio_sock2.c:183:calling connect()\n8057A57B8E7D0000:error:10000067:BIO routines:BIO_connect:connect error:../",
+          "status": "ok",
+          "group": "tls",
+          "title": "TLS 1.0/1.1 refused",
+          "seconds": 0.59
+        },
+        "mtls_client_cert": {
+          "detail": "without cert: status 200; with cert: 200; forwarded: {}",
+          "cert_headers": {},
+          "status": "fail",
+          "group": "tls",
+          "title": "Mutual TLS (client certificate required)",
+          "seconds": 0.02
+        },
+        "sni_multi_cert": {
+          "detail": "app.lab -> CN = app.lab, O = pxlab; b.lab -> CN = b.lab, O = pxlab",
+          "status": "ok",
+          "group": "tls",
+          "title": "Multiple certificates selected by SNI",
+          "seconds": 0.08
+        },
+        "acme_auto_cert": {
+          "status": "unsupported",
+          "detail": "hitch has no ACME client (use certbot/lego and reload hitch)",
+          "group": "tls",
+          "title": "Automatic certificate via ACME (Pebble)",
+          "seconds": 0
+        },
+        "cache_hit": {
+          "detail": "origin app3#1 -> app3#1; X-Cache: MISS -> HIT age=0",
+          "status": "ok",
+          "group": "caching",
+          "title": "Response caching",
+          "seconds": 0.01
+        },
+        "cache_purge": {
+          "detail": "purge -> 200; origin app1#1 -> app2#1",
+          "status": "ok",
+          "group": "caching",
+          "title": "Cache purge",
+          "seconds": 0.01
+        },
+        "cache_stale_on_error": {
+          "detail": "first 200 origin=app3#1; after expiry with origin 503: 200 origin=app3#1 X-Cache=HIT",
+          "status": "ok",
+          "group": "caching",
+          "title": "Serve stale on upstream error",
+          "seconds": 2.61
+        },
+        "compress_gzip": {
+          "detail": "Content-Encoding=gzip 345 bytes (65536 uncompressed)",
+          "bytes": 345,
+          "status": "ok",
+          "group": "compression",
+          "title": "gzip compression",
+          "seconds": 0.01
+        },
+        "compress_brotli": {
+          "status": "unsupported",
+          "detail": "Varnish compresses with gzip only",
+          "group": "compression",
+          "title": "Brotli compression",
+          "seconds": 0
+        },
+        "compress_zstd": {
+          "status": "unsupported",
+          "detail": "gzip only",
+          "group": "compression",
+          "title": "Zstandard compression",
+          "seconds": 0
+        },
+        "xff_headers": {
+          "detail": "XFF=10.77.0.1 Proto=http Host=app.lab:18080 X-Real-IP=10.77.0.1",
+          "status": "ok",
+          "group": "headers",
+          "title": "X-Forwarded-* headers",
+          "seconds": 0.0
+        },
+        "forwarded_rfc7239": {
+          "detail": "Forwarded='for=10.77.0.1;proto=http;host=app.lab:18080'",
+          "status": "ok",
+          "group": "headers",
+          "title": "RFC 7239 Forwarded header",
+          "seconds": 0.0
+        },
+        "header_add_remove": {
+          "detail": "X-Lab-Proxy=varnish X-Powered-By=removed Server=varnish",
+          "status": "ok",
+          "group": "headers",
+          "title": "Header manipulation",
+          "seconds": 0.0
+        },
+        "request_id": {
+          "detail": "'02c09177-26a5-4bd8-8e58-9e9707009e3d' / '304d1ae6-94aa-4a31-bc38-15f639bda273'",
+          "status": "ok",
+          "group": "headers",
+          "title": "Request ID generation",
+          "seconds": 0.01
+        },
+        "rate_limit": {
+          "detail": "codes={200: 10, 429: 30}",
+          "rejected": 30,
+          "status": "ok",
+          "group": "security",
+          "title": "Request rate limiting",
+          "seconds": 0.08
+        },
+        "connection_limit": {
+          "status": "unsupported",
+          "detail": "no per-client concurrency limit (vsthrottle is a request-rate limiter)",
+          "group": "security",
+          "title": "Concurrent connection limit",
+          "seconds": 0
+        },
+        "ip_allow_deny": {
+          "detail": "/allowed=200 /denied=403",
+          "status": "ok",
+          "group": "security",
+          "title": "IP allow / deny lists",
+          "seconds": 0.0
+        },
+        "basic_auth": {
+          "detail": "no creds=401 (Basic realm=\"pxlab\") creds=200",
+          "status": "ok",
+          "group": "security",
+          "title": "HTTP basic authentication",
+          "seconds": 0.0
+        },
+        "jwt_auth": {
+          "detail": "none=401 valid=200 bad-sig=401",
+          "status": "ok",
+          "group": "security",
+          "title": "JWT validation (HS256)",
+          "seconds": 0.01
+        },
+        "forward_auth": {
+          "detail": "none=401 token=200 X-Auth-User=alice",
+          "status": "ok",
+          "group": "security",
+          "title": "External authorization (forward auth / auth_request / ext_authz)",
+          "seconds": 0.01
+        },
+        "cors": {
+          "detail": "204 ACAO=https://example.com methods=GET, POST, PUT, DELETE, OPTIONS",
+          "status": "ok",
+          "group": "security",
+          "title": "CORS preflight answered by the proxy",
+          "seconds": 0.0
+        },
+        "security_headers": {
+          "detail": "{'strict-transport-security': 'max-age=31536000; includeSubDomains', 'x-content-type-options': 'nosniff', 'x-frame-options': 'DENY', 'referrer-policy': 'strict-origin-when-cross-origin'}",
+          "status": "ok",
+          "group": "security",
+          "title": "Security response headers",
+          "seconds": 0.0
+        },
+        "body_size_limit": {
+          "detail": "2MiB=413 100KiB=200",
+          "status": "ok",
+          "group": "security",
+          "title": "Request body size limit",
+          "seconds": 0.01
+        },
+        "upstream_timeout": {
+          "detail": "503 after 2.00s",
+          "seconds": 2.0,
+          "status": "ok",
+          "group": "security",
+          "title": "Upstream read timeout"
+        },
+        "fault_injection": {
+          "detail": "503 share=0.20 codes={200: 80, 503: 20}",
+          "share": 0.2,
+          "status": "ok",
+          "group": "security",
+          "title": "Fault injection",
+          "seconds": 0.28
+        },
+        "bandwidth_limit": {
+          "status": "unsupported",
+          "detail": "no bandwidth limiting in Varnish Cache (Enterprise has vmod_tcp/..)",
+          "group": "security",
+          "title": "Bandwidth limiting",
+          "seconds": 0
+        },
+        "static_files": {
+          "detail": "200 '<!doctype html><title>pxlab static</title><p>pxlab static fi' x-instance=None",
+          "status": "ok",
+          "group": "operations",
+          "title": "Static file serving",
+          "seconds": 0.0
+        },
+        "custom_error_page": {
+          "detail": "503 X-Error-Page=custom body='<!doctype html><title>pxlab error</title><h1>Custom error pa'",
+          "status": "ok",
+          "group": "operations",
+          "title": "Custom error page",
+          "seconds": 0.0
+        },
+        "hot_reload": {
+          "detail": "reload rc=0 \"VCL 'reload_20260913_172955_514' compiled\\nVCL 'reload_20260913_172955_514' now active\"; then 200",
+          "status": "ok",
+          "group": "operations",
+          "title": "Configuration reload without restart",
+          "seconds": 0.54
+        },
+        "access_log_json": {
+          "detail": "json keys: ['bytes', 'duration_s', 'handling', 'host', 'method', 'remote_addr', 'request_id', 'status', 'time', 'ua', 'uri']",
+          "status": "ok",
+          "group": "operations",
+          "title": "Structured (JSON) access log",
+          "seconds": 2.04
+        },
+        "metrics_prometheus": {
+          "detail": "200 552 samples e.g. varnish_backend_bereq_bodybytes{backend=\"app1\",server=\"unknown\"} 0",
+          "status": "ok",
+          "group": "operations",
+          "title": "Prometheus metrics",
+          "seconds": 0.07
+        },
+        "admin_api": {
+          "detail": "rc=0 'Child in state running'",
+          "status": "ok",
+          "group": "operations",
+          "title": "Admin / stats / runtime API",
+          "seconds": 0.08
+        },
+        "tracing_otel": {
+          "status": "unsupported",
+          "detail": "no OpenTelemetry in Varnish Cache",
+          "group": "operations",
+          "title": "Distributed tracing (OpenTelemetry -> Jaeger)",
+          "seconds": 0
+        },
+        "docker_label_discovery": {
+          "status": "unsupported",
+          "detail": "no Docker provider",
+          "group": "operations",
+          "title": "Service discovery from Docker labels",
+          "seconds": 0
+        }
+      },
+      "summary": {
+        "ok": 51,
+        "fail": 3,
+        "error": 0,
+        "unsupported": 15
+      },
+      "_seconds": 19.9
+    }
+  },
+  "finished": "2026-09-13T17:29:58+00:00"
+}

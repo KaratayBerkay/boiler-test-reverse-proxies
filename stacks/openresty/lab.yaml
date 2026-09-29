@@ -1,0 +1,34 @@
+display: OpenResty 1.27
+image: pxlab-openresty:latest
+build: true
+family: nginx
+category: "nginx + LuaJIT: the programmable nginx (the base of Kong and APISIX)"
+container: pxlab-openresty
+version_cmd: [openresty, -v]
+reload_cmd: [openresty, -c, /etc/openresty/nginx.conf, -s, reload]
+reload_kind: "signal (SIGHUP: new workers with the new config + Lua code, old workers drain)"
+admin: { kind: http, path: /nginx_status, expect: "Active connections" }
+metrics_path: /metrics
+tracing_service: ""
+cache_header: X-Cache
+features: { health_settle_s: 6 }
+unsupported:
+  lb_active_health: "active health checks need lua-resty-upstream-healthcheck (opm) driving the balancer; the plain upstream is passive like nginx"
+  h2_upstream: "proxy_pass is HTTP/1.x only (h2c upstreams only for gRPC via grpc_pass), same as nginx"
+  proxy_protocol_upstream: "PROXY protocol towards upstreams is a stream-module feature only, same as nginx"
+  compress_brotli: "no brotli module in the OpenResty image"
+  compress_zstd: "no zstd module"
+  tracing_otel: "no OpenTelemetry module in the OpenResty image (opentelemetry-lua is a separate integration)"
+  docker_label_discovery: "no Docker provider"
+notes: >-
+  OpenResty 1.27.1.2 (alpine-fat) with lua-resty-jwt, nginx-lua-prometheus, lua-resty-acme (+http/openssl) from opm. Same nginx
+  core config as stacks/nginx, but JWT, rate/connection limits, forward auth, fault injection, a real cache purge (os.remove of the
+  cache file), ACME (certificate requested from Pebble on the first TLS handshake for acme.lab) and Prometheus metrics are Lua.
+  HTTP/3, stream L4 and sticky/hash balancing are nginx-native.
+docs:
+  - https://hub.docker.com/r/openresty/openresty
+  - https://github.com/openresty/lua-nginx-module
+  - https://github.com/openresty/lua-resty-limit-traffic
+  - https://github.com/fffonion/lua-resty-acme
+  - https://github.com/knyar/nginx-lua-prometheus
+  - https://github.com/SkyLothar/lua-resty-jwt

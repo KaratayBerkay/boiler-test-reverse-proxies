@@ -1,0 +1,530 @@
+# pxlab Traefik v3 - DYNAMIC configuration (file provider, watched: a change here is applied without restart).
+# reload-stamp: 1789331106
+http:
+  routers:
+    # --- default vhost (any Host) and path features -----------------------------------------
+    # a router carrying `tls:` only matches TLS connections, so plain and TLS variants are separate routers
+    catch-all:
+      rule: "PathPrefix(`/`)"
+      priority: 1
+      entryPoints: [web80, web, pp]
+      middlewares: [retry, common]         # connection-level retries on the production route, not only retry.lab
+      service: app
+    catch-all-tls:
+      rule: "PathPrefix(`/`)"
+      priority: 1
+      entryPoints: [websecure]
+      middlewares: [retry, common]
+      service: app
+      tls: { options: default }
+    api-delete:
+      rule: "Method(`DELETE`) && PathPrefix(`/api/`)"
+      priority: 60
+      entryPoints: [web, websecure]
+      middlewares: [to-405]
+      service: static
+    api:
+      rule: "PathPrefix(`/api/`)"
+      priority: 50
+      entryPoints: [web, websecure]
+      middlewares: [common, strip-api, route-api]
+      service: app
+    versioned:
+      rule: "PathRegexp(`^/v[0-9]+/`)"
+      priority: 50
+      entryPoints: [web, websecure]
+      middlewares: [common, route-versioned]
+      service: app
+    old:
+      rule: "PathPrefix(`/old/`)"
+      priority: 50
+      entryPoints: [web, websecure]
+      middlewares: [common, rewrite-old, route-rewritten]
+      service: app
+    redirect-me:
+      rule: "Path(`/redirect-me`)"
+      priority: 50
+      entryPoints: [web, websecure]
+      middlewares: [redirect-landing]
+      service: app
+    canary-header:
+      rule: "Header(`X-Canary`, `1`)"
+      priority: 55
+      entryPoints: [web, websecure]
+      middlewares: [common]
+      service: canary
+    canary-query:
+      rule: "Query(`beta`, `1`)"
+      priority: 55
+      entryPoints: [web, websecure]
+      middlewares: [common]
+      service: canary
+    grpc:
+      rule: "PathPrefix(`/grpc.health.v1.Health/`)"
+      priority: 50
+      entryPoints: [web]
+      service: grpc
+    grpc-tls:
+      rule: "PathPrefix(`/grpc.health.v1.Health/`)"
+      priority: 50
+      entryPoints: [websecure]
+      service: grpc
+      tls: { options: default }
+    limited:
+      rule: "Path(`/limited`)"
+      priority: 50
+      entryPoints: [web, websecure]
+      middlewares: [ratelimit, common]
+      service: app
+    conn-limited:
+      rule: "Path(`/conn-limited`)"
+      priority: 50
+      entryPoints: [web, websecure]
+      middlewares: [inflight, to-delay-1000, common]
+      service: app
+    allowed:
+      rule: "Path(`/allowed`)"
+      priority: 50
+      entryPoints: [web, websecure]
+      middlewares: [allow-host-only, common]
+      service: app
+    denied:
+      rule: "Path(`/denied`)"
+      priority: 50
+      entryPoints: [web, websecure]
+      middlewares: [deny-lab-net, common]
+      service: app
+    basic:
+      rule: "Path(`/basic`)"
+      priority: 50
+      entryPoints: [web, websecure]
+      middlewares: [basic, common]
+      service: app
+    upload:
+      rule: "Path(`/upload`)"
+      priority: 50
+      entryPoints: [web, websecure]
+      middlewares: [body-1mb, common]
+      service: app
+    timeout:
+      rule: "Path(`/timeout`)"
+      priority: 50
+      entryPoints: [web, websecure]
+      middlewares: [to-delay-5000, common]
+      service: app-slow-timeout
+    bw:
+      rule: "Path(`/bw`)"
+      priority: 50
+      entryPoints: [web, websecure]
+      middlewares: [to-bin-1mb, common]
+      service: app
+    error-page:
+      rule: "Path(`/error-page`)"
+      priority: 50
+      entryPoints: [web, websecure]
+      middlewares: [errors-custom, to-status-503, common]
+      service: app
+    cors:
+      rule: "Path(`/cors`)"
+      priority: 50
+      entryPoints: [web, websecure]
+      middlewares: [cors, common]
+      service: app
+    secure:
+      rule: "Path(`/secure`)"
+      priority: 50
+      entryPoints: [web, websecure]
+      middlewares: [secure-headers, common]
+      service: app
+    compressible:
+      rule: "Path(`/compressible`)"
+      priority: 50
+      entryPoints: [web, websecure]
+      middlewares: [to-size-64k, compress, common]
+      service: app
+    # --- host routing ------------------------------------------------------------------------
+    a:
+      rule: "Host(`a.lab`)"
+      priority: 100
+      entryPoints: [web80, web]
+      middlewares: [common, route-a]
+      service: app
+    a-tls:
+      rule: "Host(`a.lab`)"
+      priority: 100
+      entryPoints: [websecure]
+      middlewares: [common, route-a]
+      service: app
+      tls: { options: default }
+    b:
+      rule: "Host(`b.lab`)"
+      priority: 100
+      entryPoints: [web80, web]
+      middlewares: [common, route-b]
+      service: b
+    b-tls:
+      rule: "Host(`b.lab`)"
+      priority: 100
+      entryPoints: [websecure]
+      middlewares: [common, route-b]
+      service: b
+      tls: { options: default }
+    redirect-https:
+      rule: "Host(`redirect.lab`)"
+      priority: 100
+      entryPoints: [web80, web]
+      middlewares: [redirect-https]
+      service: app
+    weighted:
+      rule: "Host(`weighted.lab`)"
+      priority: 100
+      entryPoints: [web]
+      middlewares: [common]
+      service: weighted
+    leastconn:
+      rule: "Host(`leastconn.lab`)"
+      priority: 100
+      entryPoints: [web]
+      middlewares: [common]
+      service: leastconn
+    hash:
+      rule: "Host(`hash.lab`)"
+      priority: 100
+      entryPoints: [web]
+      middlewares: [common]
+      service: app
+    sticky:
+      rule: "Host(`sticky.lab`)"
+      priority: 100
+      entryPoints: [web]
+      middlewares: [common]
+      service: sticky
+    retry:
+      rule: "Host(`retry.lab`)"
+      priority: 100
+      entryPoints: [web]
+      middlewares: [retry, common]
+      service: retry
+    cb:
+      rule: "Host(`cb.lab`)"
+      priority: 100
+      entryPoints: [web]
+      middlewares: [retry, common]
+      service: cb
+    health:
+      rule: "Host(`health.lab`)"
+      priority: 100
+      entryPoints: [web]
+      middlewares: [common]
+      service: health
+    canary:
+      rule: "Host(`canary.lab`)"
+      priority: 100
+      entryPoints: [web]
+      middlewares: [common]
+      service: canary-split
+    mirror:
+      rule: "Host(`mirror.lab`)"
+      priority: 100
+      entryPoints: [web]
+      middlewares: [common]
+      service: mirror
+    pp:
+      rule: "Host(`pp.lab`)"
+      priority: 100
+      entryPoints: [web]
+      middlewares: [common]
+      service: app
+    h2:
+      rule: "Host(`h2.lab`)"
+      priority: 100
+      entryPoints: [web]
+      middlewares: [common]
+      service: h2
+    tls-upstream:
+      rule: "Host(`tls.lab`)"
+      priority: 100
+      entryPoints: [web]
+      middlewares: [common]
+      service: tls-upstream
+    auth:
+      rule: "Host(`auth.lab`)"
+      priority: 100
+      entryPoints: [web]
+      middlewares: [forward-auth, common]
+      service: app
+    jwt:
+      rule: "Host(`jwt.lab`)"
+      priority: 100
+      entryPoints: [web]
+      middlewares: [common]
+      service: app
+    mtls:
+      rule: "Host(`mtls.lab`)"
+      priority: 100
+      entryPoints: [mtls]
+      middlewares: [common, client-cert]
+      service: app
+      tls: { options: mtls }
+    acme:
+      rule: "Host(`acme.lab`)"
+      priority: 100
+      entryPoints: [websecure]
+      middlewares: [common]
+      service: app
+      tls: { certResolver: pebble }
+    # whoami.lab comes from Docker labels (docker provider) - see shared/compose.yaml
+
+  middlewares:
+    common:
+      chain:
+        middlewares: [proxy-headers]
+    proxy-headers:
+      headers:
+        customRequestHeaders:
+          X-Lab-Proxy: traefik
+        customResponseHeaders:
+          X-Powered-By: ""                # empty value deletes the header
+          Alt-Svc: 'h3=":8443"; ma=86400'
+    strip-api:
+      stripPrefix:
+        prefixes: [/api]
+    route-api:
+      headers: { customRequestHeaders: { X-Route: api } }
+    route-versioned:
+      headers: { customRequestHeaders: { X-Route: versioned } }
+    route-rewritten:
+      headers: { customRequestHeaders: { X-Route: rewritten } }
+    route-a:
+      headers: { customRequestHeaders: { X-Route: a } }
+    route-b:
+      headers: { customRequestHeaders: { X-Route: b } }
+    rewrite-old:
+      replacePathRegex:
+        regex: "^/old/(.*)"
+        replacement: "/new/$1"
+    redirect-landing:
+      redirectRegex:
+        regex: "^(.*)/redirect-me$"
+        replacement: "/landing"
+        permanent: true
+    redirect-https:
+      redirectScheme:
+        scheme: https
+        permanent: true
+    to-405:
+      replacePath: { path: /405 }
+    to-delay-1000:
+      replacePath: { path: /delay/1000 }
+    to-delay-5000:
+      replacePath: { path: /delay/5000 }
+    to-bin-1mb:
+      replacePath: { path: /bin/1048576 }
+    to-status-503:
+      replacePath: { path: /status/503 }
+    to-size-64k:
+      replacePath: { path: /size/65536 }
+    ratelimit:
+      rateLimit:
+        average: 10
+        period: 1s
+        burst: 5
+        sourceCriterion: { ipStrategy: { depth: 0 } }
+    inflight:
+      inFlightReq:
+        amount: 3
+        sourceCriterion: { ipStrategy: { depth: 0 } }
+    allow-host-only:
+      ipAllowList:
+        sourceRange: ["10.77.0.1/32"]
+    deny-lab-net:                         # allow-list that excludes the lab network -> 403 for 10.77.0.0/24
+      ipAllowList:
+        sourceRange: ["192.0.2.0/24"]
+    basic:
+      basicAuth:
+        users: ["lab:$apr1$cskd6HFf$aI/axNenF6.5HPAhLBSKk0"]
+        realm: pxlab
+    body-1mb:
+      buffering:
+        maxRequestBodyBytes: 1048576
+    errors-custom:
+      errors:
+        status: ["500-599"]
+        service: static
+        query: "/error.html"
+    cors:
+      headers:
+        accessControlAllowOriginList: ["*"]
+        accessControlAllowMethods: [GET, POST, PUT, DELETE, OPTIONS]
+        accessControlAllowHeaders: [Authorization, Content-Type]
+        accessControlMaxAge: 600
+    secure-headers:
+      headers:
+        stsSeconds: 31536000
+        stsIncludeSubdomains: true
+        forceSTSHeader: true              # otherwise Traefik adds HSTS only on TLS responses
+        contentTypeNosniff: true
+        frameDeny: true
+        referrerPolicy: strict-origin-when-cross-origin
+    compress:
+      compress:
+        encodings: [zstd, br, gzip]
+        minResponseBodyBytes: 256
+    retry:
+      retry:
+        attempts: 3
+        initialInterval: 50ms
+    forward-auth:
+      forwardAuth:
+        address: http://app1:8080/auth
+        authResponseHeaders: [X-Auth-User, X-Auth-Groups]
+    client-cert:
+      passTLSClientCert:
+        info:
+          subject: { commonName: true, organization: true }
+
+  services:
+    app:
+      loadBalancer:
+        servers:
+          - url: http://app1:8080
+          - url: http://app2:8080
+          - url: http://app3:8080
+        healthCheck: { path: /healthz, interval: 2s, timeout: 1s }
+        passHostHeader: true
+    app-slow-timeout:                     # same pool with a 2 s response-header timeout (per-service transport)
+      loadBalancer:
+        servers:
+          - url: http://app1:8080
+          - url: http://app2:8080
+          - url: http://app3:8080
+        serversTransport: timeout-2s
+    b:
+      loadBalancer:
+        servers: [{ url: http://b1:8080 }]
+    canary:
+      loadBalancer:
+        servers: [{ url: http://canary:8080 }]
+    static:
+      loadBalancer:
+        servers: [{ url: http://static:80 }]
+    grpc:
+      loadBalancer:
+        servers: [{ url: h2c://app1:9090 }]
+    weighted:
+      loadBalancer:
+        servers:
+          - { url: http://app1:8080, weight: 3 }
+          - { url: http://app2:8080, weight: 1 }
+    leastconn:                            # p2c (power of two choices) approximates least-connections
+      loadBalancer:
+        strategy: p2c
+        servers:
+          - url: http://app1:8080
+          - url: http://app2:8080
+          - url: http://slow:8080
+    sticky:
+      loadBalancer:
+        sticky:
+          cookie: { name: lab_sticky, httpOnly: true }
+        servers:
+          - url: http://app1:8080
+          - url: http://app2:8080
+          - url: http://app3:8080
+    retry:
+      loadBalancer:
+        servers:
+          - url: http://app1:8080
+          - url: http://app2:8080
+          - url: http://app3:8099
+    cb:
+      loadBalancer:
+        servers:
+          - url: http://app1:8080
+          - url: http://app2:8080
+          - url: http://flaky:8080
+    health:
+      loadBalancer:
+        healthCheck: { path: /healthz, interval: 1s, timeout: 1s }
+        servers:
+          - url: http://app1:8080
+          - url: http://app2:8080
+          - url: http://app3:8080
+    canary-split:                         # weighted service = traffic split between services
+      weighted:
+        services:
+          - { name: app, weight: 90 }
+          - { name: canary, weight: 10 }
+    mirror:
+      mirroring:
+        service: app
+        mirrorBody: true
+        mirrors:
+          - { name: shadow, percent: 100 }
+    shadow:
+      loadBalancer:
+        servers: [{ url: http://shadow:8080 }]
+    h2:
+      loadBalancer:
+        servers: [{ url: h2c://app1:8080 }]
+    tls-upstream:
+      loadBalancer:
+        serversTransport: backend-tls
+        servers: [{ url: https://app1:8443 }]
+
+  serversTransports:
+    timeout-2s:
+      forwardingTimeouts: { responseHeaderTimeout: 2s, dialTimeout: 3s }
+    backend-tls:
+      serverName: backend.lab
+      rootCAs: [/certs/ca.crt]
+
+tcp:
+  routers:
+    tcp9000:
+      rule: "HostSNI(`*`)"
+      entryPoints: [tcp]
+      service: tcp-app1
+    passthrough:
+      rule: "HostSNI(`passthrough.lab`)"
+      entryPoints: [passthrough]
+      service: tcp-app1-tls
+      tls: { passthrough: true }
+  services:
+    tcp-app1:
+      loadBalancer:
+        servers: [{ address: "app1:8080" }]
+    tcp-app1-tls:
+      loadBalancer:
+        servers: [{ address: "app1:8443" }]
+
+udp:
+  routers:
+    udp9001:
+      entryPoints: [udp]
+      service: udp-app1
+  services:
+    udp-app1:
+      loadBalancer:
+        servers: [{ address: "app1:9002" }]
+
+tls:
+  certificates:
+    - certFile: /certs/app.lab.fullchain.crt
+      keyFile: /certs/app.lab.key
+    - certFile: /certs/b.lab.fullchain.crt      # selected by SNI
+      keyFile: /certs/b.lab.key
+  stores:
+    default:
+      defaultCertificate:
+        certFile: /certs/app.lab.fullchain.crt
+        keyFile: /certs/app.lab.key
+  options:
+    default:
+      minVersion: VersionTLS12
+      alpnProtocols: [h2, http/1.1]
+    mtls:
+      minVersion: VersionTLS12
+      clientAuth:
+        caFiles: [/certs/ca.crt]
+        clientAuthType: RequireAndVerifyClientCert

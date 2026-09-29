@@ -1,0 +1,47 @@
+# Apache Traffic Server 9.2 (Ubuntu 24.04 packages, see Dockerfile). Config files are mounted over /etc/trafficserver.
+name: pxlab-ats
+services:
+  proxy:
+    build: .
+    image: pxlab-ats:latest
+    container_name: pxlab-ats
+    cpuset: "0-3"
+    command: ["traffic_manager", "--nosyslog"]   # manager + server: traffic_ctl (reload, metrics) needs the manager
+    volumes:
+      - ./records.config:/etc/trafficserver/records.config:ro
+      - ./remap.config:/etc/trafficserver/remap.config:ro
+      - ./storage.config:/etc/trafficserver/storage.config:ro
+      - ./ssl_multicert.config:/etc/trafficserver/ssl_multicert.config:ro
+      - ./sni.yaml:/etc/trafficserver/sni.yaml:ro
+      - ./strategies.yaml:/etc/trafficserver/strategies.yaml:ro
+      - ./plugin.config:/etc/trafficserver/plugin.config:ro
+      - ./compress.config:/etc/trafficserver/compress.config:ro
+      - ./logging.yaml:/etc/trafficserver/logging.yaml:ro
+      - ./ip_allow.yaml:/etc/trafficserver/ip_allow.yaml:ro
+      - ./hdr:/etc/trafficserver/hdr:ro
+      - ../../shared/certs:/certs:ro
+      - ../../shared/static:/static:ro
+    ports:
+      - "18080:8080"
+      - "18443:8443"
+      - "18444:8444"
+      - "18445:8445"
+      - "18082:8082"
+    tmpfs:
+      - /var/cache/trafficserver:size=320m,mode=0777   # the 256 MB cache "disk" (storage.config) lives in RAM instead of the container's overlay layer
+    ulimits:
+      nofile: { soft: 1048576, hard: 1048576 }
+    sysctls:
+      net.ipv4.ip_unprivileged_port_start: 0
+    networks:
+      pxlab:
+        aliases: [proxy, app.lab, a.lab, b.lab, acme.lab, redirect.lab]
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "-H", "Host: app.lab", "http://127.0.0.1:8080/_stats"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+networks:
+  pxlab:
+    external: true
+    name: pxlab

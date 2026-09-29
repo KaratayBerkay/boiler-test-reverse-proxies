@@ -1,0 +1,503 @@
+# pxlab reference configuration for Caddy 2 (custom build: caddy-ratelimit, caddy-l4, caddy-jwt, caddy-brotli, cache-handler).
+# Implements the lab contract (docs/contract.md); annotated walkthrough: docs/configs/caddy.md.
+{
+	admin 0.0.0.0:2019                      # config API (:9101 on the host): GET /config/, POST /load, ...
+	auto_https disable_redirects            # keep ACME management (acme.lab) but no automatic :80 -> https redirects
+	http_port 80                            # ACME HTTP-01 challenges are solved on this port
+	https_port 443
+	default_sni app.lab                     # clients without SNI (IP address) get the app.lab certificate
+	metrics                                 # Prometheus metrics on the admin endpoint (/metrics)
+	log {
+		output stdout
+		format json
+	}
+	servers {
+		protocols h1 h2 h2c h3              # h2c = cleartext HTTP/2 (prior knowledge) on the plain listeners
+		trusted_proxies static 10.77.0.0/24
+		client_ip_headers X-Forwarded-For
+	}
+	servers :8082 {                         # listener that ACCEPTS PROXY protocol from the client side
+		listener_wrappers {
+			proxy_protocol {
+				timeout 5s
+				allow 0.0.0.0/0
+			}
+		}
+		protocols h1 h2c
+	}
+	order rate_limit before basic_auth
+	order jwtauth before basic_auth
+	order cache before rewrite
+	cache {                                 # Souin cache handler (Caddy has no built-in HTTP cache)
+		ttl 60s
+		stale 300s
+		default_cache_control public
+		api {
+			souin
+		}
+	}
+	layer4 {                                # caddy-l4: TCP / UDP / TLS-passthrough proxying
+		:9000 {
+			route {
+				proxy app1:8080
+			}
+		}
+		udp/:9001 {
+			route {
+				proxy udp/app1:9002
+			}
+		}
+		:8445 {
+			@pass tls sni passthrough.lab
+			route @pass {
+				proxy app1:8443
+			}
+			route {
+				proxy app1:8443
+			}
+		}
+	}
+}
+
+# ---------------------------------------------------------------------------------------------- reusable snippets
+(proxy_headers) {
+	header_up X-Lab-Proxy caddy
+	header_up X-Real-IP {http.request.remote.host}
+	header_up Forwarded "for={http.request.remote.host};proto={http.request.scheme};host={http.request.host}"
+	header_up X-Request-ID {http.request.uuid}
+	header_down -X-Powered-By
+	header_down -Server
+}
+(pool_app) {
+	lb_policy round_robin
+	lb_retries 3
+	lb_try_duration 2s
+	health_uri /healthz
+	health_interval 2s
+	health_timeout 1s
+	fail_duration 5s
+	max_fails 5
+	transport http {
+		keepalive 90s
+		keepalive_idle_conns 64
+		max_conns_per_host 20000
+	}
+}
+(tls_lab) {
+	tls /certs/app.lab.fullchain.crt /certs/app.lab.key {
+		protocols tls1.2 tls1.3
+	}
+}
+
+# ============================================================================================ default vhost (app.lab and anything else)
+# The body is a snippet so the same routes serve the plain listeners (:80 :8080 :8082) and the TLS one (:8443):
+# Caddy refuses `tls` on a site that also listens on an HTTP port.
+(default_site) {
+	tracing {
+		span pxlab
+	}
+	encode zstd br gzip                     # br via caddy-brotli; gzip + zstd are built in
+	header Alt-Svc `h3=":8443"; ma=86400`
+	log
+
+	# --- routing  (rules that must win over the catch-all `handle` live in their own `handle` blocks:
+	#     a bare `respond` would run AFTER every handle block in Caddy's directive order)
+	@del {
+		method DELETE
+		path /api/*
+	}
+	handle @del {
+		respond 405
+	}
+	@allowed_no {
+		path /allowed
+		not client_ip 10.77.0.1/32
+	}
+	handle @allowed_no {
+		respond 403
+	}
+	@denied {
+		path /denied
+		client_ip 10.77.0.0/24
+	}
+	handle @denied {
+		respond 403
+	}
+	handle_path /api/* {                    # strips the /api prefix
+		reverse_proxy app1:8080 app2:8080 app3:8080 {
+			import pool_app
+			import proxy_headers
+			header_up X-Route api
+		}
+	}
+	@versioned path_regexp ^/v[0-9]+/
+	handle @versioned {
+		reverse_proxy app1:8080 app2:8080 app3:8080 {
+			import pool_app
+			import proxy_headers
+			header_up X-Route versioned
+		}
+	}
+	handle /old/* {
+		uri replace /old/ /new/
+		reverse_proxy app1:8080 app2:8080 app3:8080 {
+			import pool_app
+			import proxy_headers
+			header_up X-Route rewritten
+		}
+	}
+	redir /redirect-me /landing 301
+	@canary {
+		header X-Canary 1
+	}
+	handle @canary {
+		reverse_proxy canary:8080 {
+			import proxy_headers
+		}
+	}
+	@beta query beta=1
+	handle @beta {
+		reverse_proxy canary:8080 {
+			import proxy_headers
+		}
+	}
+
+	# --- protocols
+	@grpc path /grpc.health.v1.Health/*
+	handle @grpc {
+		reverse_proxy h2c://app1:9090 {
+			import proxy_headers
+		}
+	}
+	handle /sse {
+		reverse_proxy app1:8080 app2:8080 app3:8080 {
+			import pool_app
+			import proxy_headers
+			flush_interval -1                # stream immediately (no response buffering)
+		}
+	}
+
+	# --- limits / security
+	handle /limited {
+		rate_limit {
+			zone limited {
+				key {client_ip}
+				events 10
+				window 1s
+			}
+		}
+		reverse_proxy app1:8080 app2:8080 app3:8080 {
+			import pool_app
+			import proxy_headers
+		}
+	}
+	handle /basic {
+		basic_auth {
+			lab $2y$05$dluT2zKzU4iNH6NGWfy.8erbMiK5ejMQqhABCZtZyeq.ucCVrQ1ga
+		}
+		reverse_proxy app1:8080 app2:8080 app3:8080 {
+			import pool_app
+			import proxy_headers
+		}
+	}
+	handle /upload {
+		request_body {
+			max_size 1MB
+		}
+		reverse_proxy app1:8080 app2:8080 app3:8080 {
+			import pool_app
+			import proxy_headers
+		}
+	}
+	handle /timeout {
+		rewrite * /delay/5000
+		reverse_proxy app1:8080 app2:8080 app3:8080 {
+			import proxy_headers
+			lb_policy round_robin
+			transport http {
+				response_header_timeout 2s
+			}
+		}
+	}
+	handle /bw {
+		rewrite * /bin/1048576
+		reverse_proxy app1:8080 app2:8080 app3:8080 {
+			import pool_app
+			import proxy_headers
+		}
+	}
+	handle_path /static/* {                 # handle_path strips the prefix, so /static/index.html -> /static/index.html on disk
+		root * /static
+		file_server
+	}
+	handle /error-page {
+		rewrite * /status/503
+		reverse_proxy app1:8080 app2:8080 app3:8080 {
+			import pool_app
+			import proxy_headers
+			@err status 5xx
+			handle_response @err {
+				root * /static
+				rewrite * /error.html
+				header X-Error-Page custom
+				header Content-Type "text/html; charset=utf-8"
+				file_server {
+					status 503
+				}
+			}
+		}
+	}
+	@cors_preflight {
+		path /cors
+		method OPTIONS
+	}
+	handle @cors_preflight {
+		header Access-Control-Allow-Origin {http.request.header.Origin}
+		header Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS"
+		header Access-Control-Allow-Headers "Authorization, Content-Type"
+		header Access-Control-Max-Age 600
+		respond 204
+	}
+	handle /cors {
+		header Access-Control-Allow-Origin *
+		reverse_proxy app1:8080 app2:8080 app3:8080 {
+			import pool_app
+			import proxy_headers
+		}
+	}
+	handle /secure {
+		header Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		header X-Content-Type-Options nosniff
+		header X-Frame-Options DENY
+		header Referrer-Policy strict-origin-when-cross-origin
+		reverse_proxy app1:8080 app2:8080 app3:8080 {
+			import pool_app
+			import proxy_headers
+		}
+	}
+
+	# --- cache (Souin): honours the origin's Cache-Control; PURGE on the resource invalidates it
+	handle /cacheable/* {
+		cache
+		reverse_proxy app1:8080 app2:8080 app3:8080 {
+			import pool_app
+			import proxy_headers
+		}
+	}
+	handle /cacheable-short/* {
+		cache
+		reverse_proxy app1:8080 app2:8080 app3:8080 {
+			import pool_app
+			import proxy_headers
+		}
+	}
+	handle /compressible {
+		rewrite * /size/65536
+		reverse_proxy app1:8080 app2:8080 app3:8080 {
+			import pool_app
+			import proxy_headers
+		}
+	}
+
+	# --- everything else: pool app, round-robin (incl. /ws, /small, /bin/*, /delay/*)
+	handle {
+		reverse_proxy app1:8080 app2:8080 app3:8080 {
+			import pool_app
+			import proxy_headers
+		}
+	}
+}
+:80, :8080, :8082 {
+	import default_site
+}
+# explicit host names on the TLS site: a host-less `:8443 { tls ... }` would pin its certificate on every SNI,
+# including acme.lab whose certificate is managed automatically
+https://app.lab:8443, https://proxy:8443, https://localhost:8443 {
+	import tls_lab
+	import default_site
+}
+
+# ============================================================================================ host routing
+(site_a) {
+	reverse_proxy app1:8080 app2:8080 app3:8080 {
+		import pool_app
+		import proxy_headers
+		header_up X-Route a
+	}
+}
+http://a.lab:8080, http://a.lab:80 {
+	import site_a
+}
+https://a.lab:8443 {
+	import tls_lab
+	import site_a
+}
+(site_b) {
+	reverse_proxy b1:8080 {
+		import proxy_headers
+		header_up X-Route b
+	}
+}
+http://b.lab:8080, http://b.lab:80 {
+	import site_b
+}
+https://b.lab:8443 {
+	tls /certs/b.lab.fullchain.crt /certs/b.lab.key       # its own certificate, selected by SNI
+	import site_b
+}
+http://redirect.lab:8080, http://redirect.lab:80 {
+	redir https://{host}{uri} 301
+}
+
+# ============================================================================================ load balancing
+http://weighted.lab:8080 {
+	reverse_proxy app1:8080 app2:8080 {
+		lb_policy weighted_round_robin 3 1
+		import proxy_headers
+	}
+}
+http://leastconn.lab:8080 {
+	reverse_proxy app1:8080 app2:8080 slow:8080 {
+		lb_policy least_conn
+		import proxy_headers
+	}
+}
+http://hash.lab:8080 {
+	reverse_proxy app1:8080 app2:8080 app3:8080 {
+		lb_policy header X-User
+		import proxy_headers
+	}
+}
+http://sticky.lab:8080 {
+	reverse_proxy app1:8080 app2:8080 app3:8080 {
+		lb_policy cookie lab_sticky
+		import proxy_headers
+	}
+}
+http://retry.lab:8080 {
+	reverse_proxy app1:8080 app2:8080 app3:8099 {
+		lb_policy round_robin
+		lb_retries 3
+		lb_try_duration 3s
+		lb_try_interval 50ms
+		import proxy_headers
+	}
+}
+http://cb.lab:8080 {                        # passive health: 5xx counts as a failure, 3 failures -> out for 10 s
+	reverse_proxy app1:8080 app2:8080 flaky:8080 {
+		lb_policy round_robin
+		lb_retries 3
+		lb_try_duration 2s
+		fail_duration 10s
+		max_fails 3
+		unhealthy_status 5xx
+		import proxy_headers
+	}
+}
+http://health.lab:8080 {                    # active health checks every second
+	reverse_proxy app1:8080 app2:8080 app3:8080 {
+		lb_policy round_robin
+		health_uri /healthz
+		health_interval 1s
+		health_timeout 1s
+		health_passes 2
+		health_fails 2
+		import proxy_headers
+	}
+}
+http://canary.lab:8080 {                    # 90/10 by weights
+	reverse_proxy app1:8080 app2:8080 app3:8080 canary:8080 {
+		lb_policy weighted_round_robin 30 30 30 10
+		import proxy_headers
+	}
+}
+http://mirror.lab:8080 {                    # no mirroring in Caddy: plain pool (declared unsupported)
+	reverse_proxy app1:8080 app2:8080 app3:8080 {
+		import pool_app
+		import proxy_headers
+	}
+}
+
+# ============================================================================================ upstream protocols
+http://pp.lab:8080 {                        # PROXY protocol v2 towards the upstream
+	reverse_proxy app1:8081 {
+		import proxy_headers
+		transport http {
+			proxy_protocol v2
+		}
+	}
+}
+http://h2.lab:8080 {                        # HTTP/2 (h2c) towards the upstream
+	reverse_proxy h2c://app1:8080 {
+		import proxy_headers
+	}
+}
+http://tls.lab:8080 {                       # TLS re-encryption, verified against the lab CA
+	reverse_proxy https://app1:8443 {
+		import proxy_headers
+		transport http {
+			tls_server_name backend.lab
+			tls_trust_pool file /certs/ca.crt
+		}
+	}
+}
+
+# ============================================================================================ auth
+http://auth.lab:8080 {
+	forward_auth app1:8080 {
+		uri /auth
+		copy_headers X-Auth-User X-Auth-Groups
+	}
+	reverse_proxy app1:8080 app2:8080 app3:8080 {
+		import pool_app
+		import proxy_headers
+	}
+}
+http://jwt.lab:8080 {
+	jwtauth {
+		sign_key cHhsYWItand0LXNlY3JldC1wbGVhc2UtY2hhbmdlLTAxMjM0NTY3ODk=
+		sign_alg HS256
+		from_header Authorization
+		user_claims sub
+	}
+	reverse_proxy app1:8080 app2:8080 app3:8080 {
+		import pool_app
+		import proxy_headers
+		header_up X-JWT-Sub {http.auth.user.id}
+	}
+}
+
+# ============================================================================================ TLS variants
+https://mtls.lab:8444 {                     # client certificate required, CN forwarded
+	tls /certs/app.lab.fullchain.crt /certs/app.lab.key {
+		client_auth {
+			mode require_and_verify
+			trust_pool file /certs/ca.crt
+		}
+	}
+	reverse_proxy app1:8080 app2:8080 app3:8080 {
+		import pool_app
+		import proxy_headers
+		header_up X-Client-Cert-CN {http.request.tls.client.subject}
+	}
+}
+https://acme.lab:8443 {                    # certificate obtained automatically from Pebble (HTTP-01 solved on http_port 80 automatically)
+	tls {
+		issuer acme {
+			dir https://pebble:14000/dir
+			email admin@pxlab.test
+			trusted_roots /certs/pebble-ca.pem
+			disable_tlsalpn_challenge
+		}
+	}
+	reverse_proxy app1:8080 app2:8080 app3:8080 {
+		import pool_app
+		import proxy_headers
+	}
+}
+
+# ============================================================================================ operations
+:9100 {
+	metrics /metrics
+	respond /healthz "ok" 200
+}

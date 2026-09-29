@@ -1,0 +1,8 @@
+# Pingora ServerConf (see pingora::server::configuration::ServerConf)
+---
+version: 1
+threads: 4
+pid_file: /tmp/pingora.pid
+upgrade_sock: /tmp/pingora_upgrade.sock
+grace_period_seconds: 10
+graceful_shutdown_timeout_seconds: 5

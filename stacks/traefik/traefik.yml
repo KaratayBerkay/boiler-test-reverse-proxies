@@ -1,0 +1,94 @@
+# pxlab reference configuration for Traefik v3 - STATIC configuration (entrypoints, providers, observability, ACME).
+# Routing lives in dynamic/dynamic.yml (file provider, watched) and in Docker labels (docker provider).
+# Annotated walkthrough: docs/configs/traefik.md.
+global:
+  checkNewVersion: false
+  sendAnonymousUsage: false
+
+entryPoints:
+  web80:                                  # ACME HTTP-01 + redirect demos
+    address: ":80"
+  web:                                    # HTTP/1.1 + h2c (cleartext HTTP/2 is always on)
+    address: ":8080"
+    forwardedHeaders:
+      trustedIPs: ["10.77.0.0/24"]
+    transport:
+      respondingTimeouts:
+        readTimeout: 60s
+        idleTimeout: 75s
+  websecure:                              # TLS: HTTP/1.1 + HTTP/2 + HTTP/3
+    address: ":8443"
+    http3:
+      advertisedPort: 8443
+    forwardedHeaders:
+      trustedIPs: ["10.77.0.0/24"]
+  mtls:                                   # client certificate required (tls option "mtls" on the router)
+    address: ":8444"
+  passthrough:                            # TCP routers with tls.passthrough
+    address: ":8445"
+  pp:                                     # accepts PROXY protocol from the client side
+    address: ":8082"
+    proxyProtocol:
+      trustedIPs: ["0.0.0.0/0"]
+  tcp:
+    address: ":9000"
+  udp:
+    address: ":9001/udp"
+  metrics:
+    address: ":9100"
+  traefik:                                # api/dashboard (api.insecure) lives on the "traefik" entrypoint
+    address: ":9101"
+
+providers:
+  file:
+    directory: /etc/traefik/dynamic
+    watch: true                           # editing dynamic.yml IS the reload
+  docker:                                 # discovers containers by labels (see shared/compose.yaml "whoami")
+    endpoint: unix:///var/run/docker.sock
+    exposedByDefault: false
+    network: pxlab
+    defaultRule: "Host(`{{ .Name }}.lab`)"
+
+api:
+  insecure: true                          # :9101/api/rawdata, /dashboard/
+  dashboard: true
+ping:
+  entryPoint: traefik                     # /ping on :9101 -> `traefik healthcheck` (container healthcheck)
+
+log:
+  level: INFO
+  format: json
+accessLog:
+  format: json
+  fields:
+    defaultMode: keep
+    headers:
+      defaultMode: drop
+      names:
+        X-Request-ID: keep
+metrics:
+  prometheus:
+    entryPoint: metrics
+    addEntryPointsLabels: true
+    addServicesLabels: true
+tracing:
+  serviceName: traefik
+  sampleRate: 0.001                       # parent-based: sampled parents (the tracing probe) are always traced
+  otlp:
+    http:
+      endpoint: http://jaeger:4318/v1/traces
+
+certificatesResolvers:
+  pebble:                                 # ACME against the Pebble test CA (LEGO_CA_CERTIFICATES trusts its directory cert)
+    acme:
+      caServer: https://pebble:14000/dir
+      email: admin@pxlab.test
+      storage: /data/acme.json
+      httpChallenge:
+        entryPoint: web80
+
+serversTransport:
+  maxIdleConnsPerHost: 200
+  forwardingTimeouts:
+    dialTimeout: 3s
+    responseHeaderTimeout: 30s

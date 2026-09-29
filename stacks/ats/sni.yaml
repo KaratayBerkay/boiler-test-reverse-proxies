@@ -1,0 +1,7 @@
+# per-SNI TLS behaviour: mTLS for mtls.lab (client CA = proxy.config.ssl.CA.cert.filename; a per-fqdn
+# verify_client_ca_certs broke the handshake in 9.2.3), blind TLS tunnel (no termination) for passthrough.lab
+sni:
+  - fqdn: mtls.lab
+    verify_client: STRICT
+  - fqdn: passthrough.lab
+    tunnel_route: app1:8443

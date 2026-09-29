@@ -1,0 +1,6 @@
+Vendored from: https://github.com/netdata/skills
+Path in upstream repo: skills/troubleshoot-haproxy
+Upstream commit: ae650fc (2026-05-31)
+License: Apache-2.0 (see LICENSE)
+Vendored on: 2026-09-13
+Unmodified copy; kept for the reverse-proxies lab (skills/README.md explains why).

@@ -1,0 +1,551 @@
+{
+  "stack": "envoy",
+  "display": "Envoy 1.39",
+  "image": "envoyproxy/envoy:v1.39-latest",
+  "family": "envoy",
+  "category": "cloud-native L4/L7 proxy (C++): the data plane of Istio & co, configured through xDS",
+  "run_id": "20260913-200127-5aa0d8",
+  "started": "2026-09-13T17:01:27+00:00",
+  "notes": "Official Envoy image with a bootstrap + file-based xDS (LDS/CDS/RDS files in a watched directory: bumping a version is the reload). lds.yaml is generated from lds.src.yaml because Envoy's YAML parser has no merge keys. Demonstrates ExtensionWithMatcher (ext_authz / basic_auth only where wanted), per-route filter configs (fault, local rate limit, RBAC, buffer, bandwidth limit, Lua error page, JWT), ring-hash cookies, outlier detection, mirroring, weighted clusters, h2c/TLS/PROXY-protocol upstreams, QUIC/HTTP/3, UDP proxy, OTel tracing and JSON access logs.",
+  "docs": [
+    "https://hub.docker.com/r/envoyproxy/envoy",
+    "https://www.envoyproxy.io/docs/envoy/latest/configuration/http/http_filters/http_filters",
+    "https://www.envoyproxy.io/docs/envoy/latest/intro/arch_overview/upstream/load_balancing/load_balancing",
+    "https://www.envoyproxy.io/docs/envoy/latest/configuration/overview/xds_api",
+    "https://www.envoyproxy.io/docs/envoy/latest/configuration/http/http_conn_man/http_conn_man"
+  ],
+  "image_size": "293 MB",
+  "startup_s": null,
+  "version": "envoy  version: b579d07d3ad7ee11d32b105e91a5a39ad24718d7/1.39.1/Clean/RELEASE/BoringSSL",
+  "containers": [
+    "pxlab-envoy"
+  ],
+  "unsupported": {
+    "connection_limit": "the connection_limit network filter is per listener; per-client concurrency needs the global rate-limit service",
+    "acme_auto_cert": "no ACME client in Envoy (certificates come from SDS / a control plane such as cert-manager)",
+    "cache_purge": "the cache filter (SimpleHttpCache) has no invalidation API",
+    "cache_stale_on_error": "the cache filter has no stale-if-error mode",
+    "docker_label_discovery": "no Docker provider; endpoints come from xDS (or STRICT_DNS as here)"
+  },
+  "phases": {
+    "capabilities": {
+      "ready_s": 0.1,
+      "probes": {
+        "route_host": {
+          "detail": "a.lab -> app3 (X-Route=None), b.lab -> b1",
+          "status": "fail",
+          "group": "routing",
+          "title": "Host-based routing",
+          "seconds": 0.01
+        },
+        "route_path_prefix": {
+          "detail": "upstream path=/api/hello query=x=1 X-Route=None",
+          "status": "fail",
+          "group": "routing",
+          "title": "Path prefix route + strip prefix",
+          "seconds": 0.0
+        },
+        "route_path_regex": {
+          "detail": "path=/v2/things X-Route=None",
+          "status": "fail",
+          "group": "routing",
+          "title": "Regex path route",
+          "seconds": 0.0
+        },
+        "route_rewrite": {
+          "detail": "upstream path=/old/thing X-Route=None",
+          "status": "fail",
+          "group": "routing",
+          "title": "URL rewrite (regex capture)",
+          "seconds": 0.0
+        },
+        "route_redirect": {
+          "detail": "404 Location=",
+          "status": "fail",
+          "group": "routing",
+          "title": "Redirect issued by the proxy",
+          "seconds": 0.01
+        },
+        "route_header": {
+          "detail": "instance=canary",
+          "status": "ok",
+          "group": "routing",
+          "title": "Header-based routing",
+          "seconds": 0.0
+        },
+        "route_query": {
+          "detail": "instance=canary",
+          "status": "ok",
+          "group": "routing",
+          "title": "Query-parameter routing",
+          "seconds": 0.0
+        },
+        "route_method": {
+          "detail": "DELETE -> 405 (x-instance=None)",
+          "status": "ok",
+          "group": "routing",
+          "title": "Method-based rule",
+          "seconds": 0.0
+        },
+        "redirect_https": {
+          "detail": "404 Location=",
+          "status": "fail",
+          "group": "routing",
+          "title": "HTTP -> HTTPS redirect",
+          "seconds": 0.0
+        },
+        "lb_round_robin": {
+          "detail": {
+            "app1": 10,
+            "app2": 10,
+            "app3": 10
+          },
+          "status": "ok",
+          "group": "load-balancing",
+          "title": "Round-robin over 3 backends",
+          "seconds": 0.06
+        },
+        "lb_weighted": {
+          "detail": "app1 share=0.75 {'app1': 75, 'app2': 25}",
+          "share": 0.75,
+          "status": "ok",
+          "group": "load-balancing",
+          "title": "Weighted round-robin (3:1)",
+          "seconds": 0.24
+        },
+        "lb_least_conn": {
+          "detail": "slow share=0.05 {'app2': 138, 'app1': 148, 'slow': 14}",
+          "share": 0.04666666666666667,
+          "status": "ok",
+          "group": "load-balancing",
+          "title": "Least-connections",
+          "seconds": 0.65
+        },
+        "lb_hash_header": {
+          "detail": "u1 -> {'app1': 5, 'app3': 6, 'app2': 9}; 10 users -> {'app2': 12, 'app1': 10, 'app3': 8}",
+          "status": "fail",
+          "group": "load-balancing",
+          "title": "Consistent hashing on a header",
+          "seconds": 0.14
+        },
+        "lb_sticky_cookie": {
+          "detail": "cookie='' first=app1 then={'app1': 7, 'app3': 2, 'app2': 3}",
+          "status": "fail",
+          "group": "load-balancing",
+          "title": "Cookie stickiness",
+          "seconds": 0.03
+        },
+        "lb_retry_dead_member": {
+          "detail": "codes={200: 20, 503: 10} max_ms=3",
+          "max_ms": 3.5,
+          "status": "fail",
+          "group": "load-balancing",
+          "title": "Retry on connect failure",
+          "seconds": 0.07
+        },
+        "lb_outlier_ejection": {
+          "detail": "first20={500: 3, 200: 17} last20={200: 40} flaky hits in last 20=0",
+          "errors_first20": 3,
+          "errors_last20": -20,
+          "flaky_hits_last20": 0,
+          "status": "ok",
+          "group": "load-balancing",
+          "title": "Passive health / outlier ejection",
+          "seconds": 1.65
+        },
+        "lb_active_health": {
+          "detail": "while unhealthy: {'app1': 10, 'app2': 10, 'app3': 10} app3 hits=10; re-admitted after 0.0s",
+          "readmit_s": 0.0,
+          "status": "fail",
+          "group": "load-balancing",
+          "title": "Active health checks",
+          "seconds": 5.26
+        },
+        "lb_canary_split": {
+          "detail": "canary share=0.130 {'app1': 58, 'app2': 58, 'app3': 58, 'canary': 26}",
+          "share": 0.13,
+          "status": "ok",
+          "group": "load-balancing",
+          "title": "Weighted traffic split (canary)",
+          "seconds": 0.43
+        },
+        "lb_mirror": {
+          "detail": "shadow received 0/20",
+          "mirrored": 0,
+          "status": "fail",
+          "group": "load-balancing",
+          "title": "Request mirroring / shadowing",
+          "seconds": 1.13
+        },
+        "lb_upstream_keepalive": {
+          "detail": "new upstream connections for 60 requests: {'app3': 1, 'app2': 1, 'app1': 1}",
+          "upstream_connections": 3,
+          "status": "ok",
+          "group": "load-balancing",
+          "title": "Upstream connection pooling",
+          "seconds": 0.38
+        },
+        "http2_tls": {
+          "detail": "HTTP/2 200 upstream proto=HTTP/1.1",
+          "status": "ok",
+          "group": "protocols",
+          "title": "HTTP/2 (TLS, ALPN)",
+          "seconds": 0.01
+        },
+        "h2c_frontend": {
+          "detail": "status=200 body=b'{\\n \"instance\": \"app1\",\\n \"pool\": \"app\",\\n '",
+          "status": "ok",
+          "group": "protocols",
+          "title": "HTTP/2 cleartext (prior knowledge) on :8080",
+          "seconds": 0.0
+        },
+        "http3": {
+          "detail": "proto=HTTP/3.0 status={'200': 862} errors=0 []",
+          "status": "ok",
+          "group": "protocols",
+          "title": "HTTP/3 (QUIC)",
+          "seconds": 1.49
+        },
+        "websocket": {
+          "detail": "TimeoutError: timed out while waiting for handshake response",
+          "status": "error",
+          "group": "protocols",
+          "title": "WebSocket proxying",
+          "seconds": 8.02
+        },
+        "sse_streaming": {
+          "detail": "events=5 first=0.0s total=1.21s",
+          "status": "ok",
+          "group": "protocols",
+          "title": "Server-sent events (no response buffering)",
+          "seconds": 1.21
+        },
+        "grpc": {
+          "detail": "tls:8443: SERVING",
+          "via": "tls:8443",
+          "status": "ok",
+          "group": "protocols",
+          "title": "gRPC proxying (h2 -> upstream h2c :9090)",
+          "seconds": 0.07
+        },
+        "h2_upstream": {
+          "detail": "upstream proto=HTTP/2.0",
+          "status": "ok",
+          "group": "protocols",
+          "title": "HTTP/2 to the upstream (h2c)",
+          "seconds": 0.0
+        },
+        "tls_upstream": {
+          "detail": "listener=tls tls={'version': 'TLS1.2', 'sni': 'backend.lab', 'alpn': 'http/1.1'}",
+          "status": "ok",
+          "group": "protocols",
+          "title": "TLS re-encryption to the upstream (verified)",
+          "seconds": 0.0
+        },
+        "proxy_protocol_upstream": {
+          "detail": "listener=pp proxy_protocol={'version': 2, 'src_ip': '', 'src_port': 0, 'dst_ip': '', 'dst_port': 0, 'protocol': '0x00'}",
+          "status": "fail",
+          "group": "protocols",
+          "title": "PROXY protocol v2 to the upstream",
+          "seconds": 0.0
+        },
+        "proxy_protocol_accept": {
+          "detail": "X-Forwarded-For=203.0.113.9,10.77.0.2 remote_addr=10.77.0.2:46582",
+          "status": "ok",
+          "group": "protocols",
+          "title": "Accept PROXY protocol from clients (:8082)",
+          "seconds": 0.0
+        },
+        "tcp_l4": {
+          "detail": "instance=app1 remote_addr=10.77.0.2:43984 headers=['Connection']",
+          "status": "ok",
+          "group": "protocols",
+          "title": "TCP (L4) proxying",
+          "seconds": 0.0
+        },
+        "udp_l4": {
+          "detail": "echo:app1:ping-a6d6e7",
+          "status": "ok",
+          "group": "protocols",
+          "title": "UDP proxying",
+          "seconds": 0.0
+        },
+        "tls_passthrough_sni": {
+          "detail": "subject=CN = backend.lab, O = pxlab TLSv1.3",
+          "status": "ok",
+          "group": "protocols",
+          "title": "TLS passthrough by SNI (L4)",
+          "seconds": 0.04
+        },
+        "tls_termination": {
+          "detail": "200 cert=CN = app.lab, O = pxlab TLSv1.3 X-Forwarded-Proto=https",
+          "status": "ok",
+          "group": "tls",
+          "title": "TLS termination",
+          "seconds": 0.05
+        },
+        "tls13": {
+          "detail": "TLSv1.3 TLS_AES_256_GCM_SHA384",
+          "status": "ok",
+          "group": "tls",
+          "title": "TLS 1.3 negotiated",
+          "seconds": 0.0
+        },
+        "tls_legacy_refused": {
+          "detail": "80F7A8D0FD780000:error:0A00042E:SSL routines:ssl3_read_bytes:tlsv1 alert protocol version:../ssl/record/rec_layer_s3.c:918:SSL alert number 70\nProtocol: TLSv1.1\n    Protocol  : TLSv1.1",
+          "status": "ok",
+          "group": "tls",
+          "title": "TLS 1.0/1.1 refused",
+          "seconds": 0.47
+        },
+        "mtls_client_cert": {
+          "detail": "without cert: ReadError: [SSL: TLSV13_ALERT_CERTIFICATE_REQUIRED] tlsv13 alert certificate req; with cert: 200; forwarded: {'X-Forwarded-Client-Cert': 'Hash=9e77bced09783c1430d03f5bdc8afd5b716b34861a95bf824f93d1f3ab83a013;Subject=\"O=pxlab,CN=lab-client\"'}",
+          "cert_headers": {
+            "X-Forwarded-Client-Cert": "Hash=9e77bced09783c1430d03f5bdc8afd5b716b34861a95bf824f93d1f3ab83a013;Subject=\"O=pxlab,CN=lab-client\""
+          },
+          "status": "ok",
+          "group": "tls",
+          "title": "Mutual TLS (client certificate required)",
+          "seconds": 0.02
+        },
+        "sni_multi_cert": {
+          "detail": "app.lab -> CN = app.lab, O = pxlab; b.lab -> CN = b.lab, O = pxlab",
+          "status": "ok",
+          "group": "tls",
+          "title": "Multiple certificates selected by SNI",
+          "seconds": 0.08
+        },
+        "acme_auto_cert": {
+          "status": "unsupported",
+          "detail": "no ACME client in Envoy (certificates come from SDS / a control plane such as cert-manager)",
+          "group": "tls",
+          "title": "Automatic certificate via ACME (Pebble)",
+          "seconds": 0
+        },
+        "cache_hit": {
+          "detail": "origin app3#1 -> app3#1; age: None -> 0 age=0",
+          "status": "ok",
+          "group": "caching",
+          "title": "Response caching",
+          "seconds": 0.01
+        },
+        "cache_purge": {
+          "status": "unsupported",
+          "detail": "the cache filter (SimpleHttpCache) has no invalidation API",
+          "group": "caching",
+          "title": "Cache purge",
+          "seconds": 0
+        },
+        "cache_stale_on_error": {
+          "status": "unsupported",
+          "detail": "the cache filter has no stale-if-error mode",
+          "group": "caching",
+          "title": "Serve stale on upstream error",
+          "seconds": 0
+        },
+        "compress_gzip": {
+          "detail": "Content-Encoding=none 538 bytes (65536 uncompressed)",
+          "bytes": 538,
+          "status": "fail",
+          "group": "compression",
+          "title": "gzip compression",
+          "seconds": 0.0
+        },
+        "compress_brotli": {
+          "detail": "Content-Encoding=none 536 bytes (65536 uncompressed)",
+          "bytes": 536,
+          "status": "fail",
+          "group": "compression",
+          "title": "Brotli compression",
+          "seconds": 0.0
+        },
+        "compress_zstd": {
+          "detail": "Content-Encoding=none 539 bytes (65536 uncompressed)",
+          "bytes": 539,
+          "status": "fail",
+          "group": "compression",
+          "title": "Zstandard compression",
+          "seconds": 0.0
+        },
+        "xff_headers": {
+          "detail": "XFF=10.77.0.1,10.77.0.2 Proto=http Host=None X-Real-IP=None",
+          "status": "ok",
+          "group": "headers",
+          "title": "X-Forwarded-* headers",
+          "seconds": 0.0
+        },
+        "forwarded_rfc7239": {
+          "detail": "Forwarded=''",
+          "status": "fail",
+          "group": "headers",
+          "title": "RFC 7239 Forwarded header",
+          "seconds": 0.0
+        },
+        "header_add_remove": {
+          "detail": "X-Lab-Proxy=None X-Powered-By=present Server=envoy",
+          "status": "fail",
+          "group": "headers",
+          "title": "Header manipulation",
+          "seconds": 0.0
+        },
+        "request_id": {
+          "detail": "'001d414e-c998-49d6-86b9-c6f2dee5826e' / 'a6b59415-370a-4341-bb1c-1e337c6744dc'",
+          "status": "ok",
+          "group": "headers",
+          "title": "Request ID generation",
+          "seconds": 0.01
+        },
+        "rate_limit": {
+          "detail": "codes={200: 15, 429: 25}",
+          "rejected": 25,
+          "status": "ok",
+          "group": "security",
+          "title": "Request rate limiting",
+          "seconds": 0.1
+        },
+        "connection_limit": {
+          "status": "unsupported",
+          "detail": "the connection_limit network filter is per listener; per-client concurrency needs the global rate-limit service",
+          "group": "security",
+          "title": "Concurrent connection limit",
+          "seconds": 0
+        },
+        "ip_allow_deny": {
+          "detail": "/allowed=200 /denied=403",
+          "status": "ok",
+          "group": "security",
+          "title": "IP allow / deny lists",
+          "seconds": 0.0
+        },
+        "basic_auth": {
+          "detail": "no creds=401 (Basic realm=\"http://app.lab/basic\") creds=200",
+          "status": "ok",
+          "group": "security",
+          "title": "HTTP basic authentication",
+          "seconds": 0.0
+        },
+        "jwt_auth": {
+          "detail": "none=401 valid=200 bad-sig=401",
+          "status": "ok",
+          "group": "security",
+          "title": "JWT validation (HS256)",
+          "seconds": 0.01
+        },
+        "forward_auth": {
+          "detail": "none=401 token=200 X-Auth-User=alice",
+          "status": "ok",
+          "group": "security",
+          "title": "External authorization (forward auth / auth_request / ext_authz)",
+          "seconds": 0.01
+        },
+        "cors": {
+          "detail": "200 ACAO=https://example.com methods=GET, POST, PUT, DELETE, OPTIONS",
+          "status": "ok",
+          "group": "security",
+          "title": "CORS preflight answered by the proxy",
+          "seconds": 0.0
+        },
+        "security_headers": {
+          "detail": "{'strict-transport-security': None, 'x-content-type-options': None, 'x-frame-options': None, 'referrer-policy': None}",
+          "status": "fail",
+          "group": "security",
+          "title": "Security response headers",
+          "seconds": 0.0
+        },
+        "body_size_limit": {
+          "detail": "2MiB=413 100KiB=200",
+          "status": "ok",
+          "group": "security",
+          "title": "Request body size limit",
+          "seconds": 0.01
+        },
+        "upstream_timeout": {
+          "detail": "200 after 0.00s",
+          "seconds": 0.0,
+          "status": "fail",
+          "group": "security",
+          "title": "Upstream read timeout"
+        },
+        "fault_injection": {
+          "detail": "503 share=0.28 codes={503: 28, 200: 72}",
+          "share": 0.28,
+          "status": "ok",
+          "group": "security",
+          "title": "Fault injection",
+          "seconds": 0.25
+        },
+        "bandwidth_limit": {
+          "detail": "200 595 bytes in 0.00s (195 KB/s)",
+          "seconds": 0.0,
+          "status": "fail",
+          "group": "security",
+          "title": "Bandwidth limiting"
+        },
+        "static_files": {
+          "detail": "404 '' x-instance=None",
+          "status": "fail",
+          "group": "operations",
+          "title": "Static file serving",
+          "seconds": 0.0
+        },
+        "custom_error_page": {
+          "detail": "200 X-Error-Page=None body='{\\n \"instance\": \"app2\",\\n \"pool\": \"app\",\\n \"listener\": \"http\",\\n'",
+          "status": "fail",
+          "group": "operations",
+          "title": "Custom error page",
+          "seconds": 0.0
+        },
+        "hot_reload": {
+          "detail": "reload rc=0 ''; then 200",
+          "status": "ok",
+          "group": "operations",
+          "title": "Configuration reload without restart",
+          "seconds": 0.01
+        },
+        "access_log_json": {
+          "detail": "json keys: ['authority', 'bytes_sent', 'client', 'duration_ms', 'flags', 'method', 'path', 'protocol', 'request_id', 'status', 'time', 'ua']",
+          "status": "ok",
+          "group": "operations",
+          "title": "Structured (JSON) access log",
+          "seconds": 1.54
+        },
+        "metrics_prometheus": {
+          "detail": "200 6252 samples e.g. envoy_bw_http_bandwidth_limit_request_allowed_total_size{} 0",
+          "status": "ok",
+          "group": "operations",
+          "title": "Prometheus metrics",
+          "seconds": 0.08
+        },
+        "admin_api": {
+          "detail": "GET /server_info -> 200 '{\\n \"version\": \"b579d07d3ad7ee11d32b105e91a5a39ad24718d7/1.39.1/Clean/RELEASE/Bor'",
+          "status": "ok",
+          "group": "operations",
+          "title": "Admin / stats / runtime API",
+          "seconds": 0.05
+        },
+        "tracing_otel": {
+          "detail": "jaeger traces for service 'envoy': 3",
+          "status": "ok",
+          "group": "operations",
+          "title": "Distributed tracing (OpenTelemetry -> Jaeger)",
+          "seconds": 0.05
+        },
+        "docker_label_discovery": {
+          "status": "unsupported",
+          "detail": "no Docker provider; endpoints come from xDS (or STRICT_DNS as here)",
+          "group": "operations",
+          "title": "Service discovery from Docker labels",
+          "seconds": 0
+        }
+      },
+      "summary": {
+        "ok": 41,
+        "fail": 22,
+        "error": 1,
+        "unsupported": 5
+      },
+      "_seconds": 26.1
+    }
+  },
+  "finished": "2026-09-13T17:01:53+00:00"
+}

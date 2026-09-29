@@ -1,0 +1,6 @@
+Vendored from: https://github.com/magnus919/agent-skills
+Path in upstream repo: traefik
+Upstream commit: d0edebb (2026-09-10)
+License: MIT (see LICENSE)
+Vendored on: 2026-09-13
+Copied without changes except for the removal of the upstream `evals/` directory; kept for the reverse-proxies lab (skills/README.md explains why).

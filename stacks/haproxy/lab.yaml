@@ -1,0 +1,32 @@
+display: HAProxy 3.4
+image: haproxy:lts
+family: haproxy
+category: TCP/HTTP load balancer (C, event-driven, multi-threaded); the reference L4/L7 balancer
+container: pxlab-haproxy
+version_cmd: [haproxy, -v]
+reload_cmd: [sh, -c, "haproxy -c -f /usr/local/etc/haproxy/haproxy.cfg -q && kill -USR2 1"]
+reload_kind: signal (SIGUSR2 to the master -> new worker with the new config, listeners handed over via expose-fd, old worker drains)
+admin: { kind: http, path: /stats, expect: "HAProxy" }
+metrics_path: /metrics
+tracing_service: ""
+cache_header: X-Cache
+features: { health_settle_s: 5 }
+unsupported:
+  udp_l4: "HAProxy proxies TCP and QUIC only; there is no generic UDP proxying (only syslog/DNS forwarding)"
+  lb_mirror: "no native request mirroring; use tcp-level tee or SPOE + an external agent"
+  cache_purge: "the built-in cache is a small-object accelerator without an invalidation API; entries expire by max-age (or reload)"
+  cache_stale_on_error: "the cache has no stale-if-error / grace mode; an expired entry is refetched and the origin's 503 is returned"
+  compress_brotli: "compression uses libslz (gzip/deflate only); no brotli or zstd support"
+  compress_zstd: "no zstd (slz only)"
+  tracing_otel: "no OpenTelemetry exporter in the official build (the OpenTracing filter needs a separate addon build)"
+  docker_label_discovery: "no Docker provider; the Data Plane API / Ingress Controller do this in other setups"
+notes: >-
+  Official HAProxy LTS image (3.4.4): QUIC/HTTP/3 through OpenSSL 3.5's native QUIC API, ACME client (experimental,
+  crt-store starts with a temporary key pair until Pebble issues the certificate), Lua forward-auth through the internal
+  httpclient, jwt_verify for JWTs, stick-tables for rate/connection limits, bwlim filter, built-in cache and Prometheus exporter.
+  Master-worker mode makes `kill -USR2 1` a seamless reload. No UDP, no mirroring, no purge, gzip only.
+docs:
+  - https://hub.docker.com/_/haproxy
+  - https://docs.haproxy.org/3.4/configuration.html
+  - https://github.com/haproxy/wiki/wiki/ACME:--native-haproxy
+  - https://www.haproxy.com/documentation/haproxy-configuration-tutorials/

@@ -1,0 +1,254 @@
+# pxlab Envoy - ROUTES (file-based RDS, shared by the HTTP, HTTPS, HTTP/3 and PROXY-protocol listeners).
+# Bump version_info after editing: the watched directory applies it without restart (this is the lab's "reload").
+version_info: "1789331050"
+resources:
+  - "@type": type.googleapis.com/envoy.config.route.v3.RouteConfiguration
+    name: pxlab
+    # headers added to every proxied request / response (Envoy itself sets x-forwarded-for/-proto and x-request-id)
+    request_headers_to_add:
+      - { header: { key: X-Lab-Proxy, value: envoy }, append_action: OVERWRITE_IF_EXISTS_OR_ADD }
+      - { header: { key: X-Real-IP, value: "%DOWNSTREAM_REMOTE_ADDRESS_WITHOUT_PORT%" }, append_action: OVERWRITE_IF_EXISTS_OR_ADD }
+      - { header: { key: X-Forwarded-Host, value: "%REQ(:AUTHORITY)%" }, append_action: OVERWRITE_IF_EXISTS_OR_ADD }
+      - { header: { key: Forwarded, value: "for=%DOWNSTREAM_REMOTE_ADDRESS_WITHOUT_PORT%;proto=%REQ(X-FORWARDED-PROTO)%;host=%REQ(:AUTHORITY)%" }, append_action: OVERWRITE_IF_EXISTS_OR_ADD }
+    response_headers_to_remove: [x-powered-by]
+    response_headers_to_add:
+      - { header: { key: alt-svc, value: 'h3=":8443"; ma=86400' }, append_action: OVERWRITE_IF_EXISTS_OR_ADD }
+    virtual_hosts:
+      # ------------------------------------------------------------ host routing
+      - name: a
+        domains: [a.lab]
+        routes:
+          - match: { prefix: / }
+            route: { cluster: app }
+            request_headers_to_add: [{ header: { key: X-Route, value: a } }]
+      - name: b
+        domains: [b.lab]
+        routes:
+          - match: { prefix: / }
+            route: { cluster: b }
+            request_headers_to_add: [{ header: { key: X-Route, value: b } }]
+      - name: redirect
+        domains: [redirect.lab]
+        routes:
+          - match: { prefix: / }
+            redirect: { https_redirect: true, port_redirect: 8443, response_code: PERMANENT_REDIRECT }
+      # ------------------------------------------------------------ load-balancing variants
+      - name: weighted
+        domains: [weighted.lab]
+        routes: [{ match: { prefix: / }, route: { cluster: weighted } }]
+      - name: leastconn
+        domains: [leastconn.lab]
+        routes: [{ match: { prefix: / }, route: { cluster: leastconn } }]
+      - name: hash
+        domains: [hash.lab]
+        routes:
+          - match: { prefix: / }
+            route:
+              cluster: hash
+              hash_policy: [{ header: { header_name: X-User } }, { connection_properties: { source_ip: true } }]
+      - name: sticky                                       # ring hash on a cookie Envoy generates itself (ttl -> Set-Cookie)
+        domains: [sticky.lab]
+        routes:
+          - match: { prefix: / }
+            route:
+              cluster: hash
+              hash_policy: [{ cookie: { name: lab_sticky, ttl: 3600s, path: / } }]
+      - name: retry
+        domains: [retry.lab]
+        routes:
+          - match: { prefix: / }
+            route:
+              cluster: retry
+              retry_policy: { retry_on: "connect-failure,refused-stream,reset", num_retries: 3, per_try_timeout: 3s }
+      - name: cb
+        domains: [cb.lab]
+        routes:
+          - match: { prefix: / }
+            route:
+              cluster: cb
+              retry_policy: { retry_on: "5xx,connect-failure,reset", num_retries: 3 }
+      - name: health
+        domains: [health.lab]
+        routes: [{ match: { prefix: / }, route: { cluster: health } }]
+      - name: canary
+        domains: [canary.lab]
+        routes:
+          - match: { prefix: / }
+            route:
+              weighted_clusters:
+                clusters:
+                  - { name: app, weight: 90 }
+                  - { name: canary, weight: 10 }
+      - name: mirror
+        domains: [mirror.lab]
+        routes:
+          - match: { prefix: / }
+            route:
+              cluster: app
+              request_mirror_policies: [{ cluster: shadow, runtime_fraction: { default_value: { numerator: 100 } } }]
+      # ------------------------------------------------------------ upstream protocol variants
+      - name: pp
+        domains: [pp.lab]
+        routes: [{ match: { prefix: / }, route: { cluster: app_pp } }]
+      - name: h2
+        domains: [h2.lab]
+        routes: [{ match: { prefix: / }, route: { cluster: app_h2 } }]
+      - name: tls
+        domains: [tls.lab]
+        routes: [{ match: { prefix: / }, route: { cluster: app_tls } }]
+      # ------------------------------------------------------------ auth
+      - name: auth                                         # ext_authz is enabled only for this authority (see lds.yaml matcher)
+        domains: [auth.lab]
+        routes: [{ match: { prefix: / }, route: { cluster: app } }]
+      - name: jwt
+        domains: [jwt.lab]
+        typed_per_filter_config:
+          envoy.filters.http.jwt_authn:
+            "@type": type.googleapis.com/envoy.extensions.filters.http.jwt_authn.v3.PerRouteConfig
+            requirement_name: pxlab
+        routes: [{ match: { prefix: / }, route: { cluster: app } }]
+      - name: mtls
+        domains: [mtls.lab]
+        routes:
+          - match: { prefix: / }
+            route: { cluster: app }
+            request_headers_to_add:
+              - { header: { key: X-Client-Cert-CN, value: "%DOWNSTREAM_PEER_SUBJECT%" } }
+      # ------------------------------------------------------------ default vhost: app.lab and everything else
+      - name: default
+        domains: ["*"]
+        retry_policy:                                        # connection-level retries on every route (a stopped backend costs one retry, not a 503)
+          retry_on: "connect-failure,refused-stream,reset"
+          num_retries: 2
+          retry_host_predicate: [{ name: envoy.retry_host_predicates.previous_hosts, typed_config: { "@type": type.googleapis.com/envoy.extensions.retry.host.previous_hosts.v3.PreviousHostsPredicate } }]
+          host_selection_retry_max_attempts: 3               # never retry on the host that just failed
+        routes:
+          # method / header / query routing
+          - match: { prefix: /api/, headers: [{ name: ":method", string_match: { exact: DELETE } }] }
+            direct_response: { status: 405, body: { inline_string: "method not allowed\n" } }
+          - match: { prefix: /, headers: [{ name: X-Canary, string_match: { exact: "1" } }] }
+            route: { cluster: canary }
+          - match: { prefix: /, query_parameters: [{ name: beta, string_match: { exact: "1" } }] }
+            route: { cluster: canary }
+          # path routing / rewrites
+          - match: { prefix: /api/ }
+            route: { cluster: app, prefix_rewrite: / }
+            request_headers_to_add: [{ header: { key: X-Route, value: api } }]
+          - match: { safe_regex: { regex: "^/v[0-9]+/.*" } }
+            route: { cluster: app }
+            request_headers_to_add: [{ header: { key: X-Route, value: versioned } }]
+          - match: { prefix: /old/ }
+            route: { cluster: app, regex_rewrite: { pattern: { regex: "^/old/(.*)$" }, substitution: "/new/\\1" } }
+            request_headers_to_add: [{ header: { key: X-Route, value: rewritten } }]
+          - match: { path: /redirect-me }
+            redirect: { path_redirect: /landing, response_code: MOVED_PERMANENTLY }
+          # protocols
+          - match: { prefix: /grpc.health.v1.Health/ }
+            route: { cluster: grpc, timeout: 30s }
+          - match: { path: /ws }
+            route: { cluster: app, timeout: 0s, upgrade_configs: [{ upgrade_type: websocket }] }
+          - match: { path: /sse }
+            route: { cluster: app, timeout: 0s }
+          # limits / security (per-route filter configs)
+          - match: { path: /limited }
+            route: { cluster: app }
+            typed_per_filter_config:
+              envoy.filters.http.local_ratelimit:
+                "@type": type.googleapis.com/envoy.extensions.filters.http.local_ratelimit.v3.LocalRateLimit
+                stat_prefix: limited
+                token_bucket: { max_tokens: 15, tokens_per_fill: 10, fill_interval: 1s }
+                filter_enabled: { default_value: { numerator: 100 }, runtime_key: limited_enabled }
+                filter_enforced: { default_value: { numerator: 100 }, runtime_key: limited_enforced }
+                status: { code: TooManyRequests }
+          - match: { path: /conn-limited }
+            route: { cluster: app, prefix_rewrite: /delay/1000 }
+          - match: { path: /allowed }
+            route: { cluster: app }
+            typed_per_filter_config:
+              envoy.filters.http.rbac:
+                "@type": type.googleapis.com/envoy.extensions.filters.http.rbac.v3.RBACPerRoute
+                rbac:
+                  rules:
+                    action: ALLOW
+                    policies:
+                      host-only:
+                        permissions: [{ any: true }]
+                        principals: [{ direct_remote_ip: { address_prefix: 10.77.0.1, prefix_len: 32 } }]
+          - match: { path: /denied }
+            route: { cluster: app }
+            typed_per_filter_config:
+              envoy.filters.http.rbac:
+                "@type": type.googleapis.com/envoy.extensions.filters.http.rbac.v3.RBACPerRoute
+                rbac:
+                  rules:
+                    action: DENY
+                    policies:
+                      lab-net:
+                        permissions: [{ any: true }]
+                        principals: [{ direct_remote_ip: { address_prefix: 10.77.0.0, prefix_len: 24 } }]
+          - match: { path: /basic }                        # basic_auth filter is enabled only for this path (see lds.yaml matcher)
+            route: { cluster: app }
+          - match: { path: /upload }
+            route: { cluster: app }
+            typed_per_filter_config:
+              envoy.filters.http.buffer:
+                "@type": type.googleapis.com/envoy.extensions.filters.http.buffer.v3.BufferPerRoute
+                buffer: { max_request_bytes: 1048576 }
+          - match: { path: /timeout }
+            route: { cluster: app, prefix_rewrite: /delay/5000, timeout: 2s }
+          - match: { path: /fault }
+            route: { cluster: app }
+            typed_per_filter_config:
+              envoy.filters.http.fault:
+                "@type": type.googleapis.com/envoy.extensions.filters.http.fault.v3.HTTPFault
+                abort: { http_status: 503, percentage: { numerator: 20, denominator: HUNDRED } }
+          - match: { path: /bw }
+            route: { cluster: app, prefix_rewrite: /bin/1048576 }
+            typed_per_filter_config:
+              envoy.filters.http.bandwidth_limit:
+                "@type": type.googleapis.com/envoy.extensions.filters.http.bandwidth_limit.v3.BandwidthLimit
+                stat_prefix: bw
+                enable_mode: RESPONSE
+                limit_kbps: 488
+                fill_interval: 0.05s
+          - match: { path: /static/index.html }
+            direct_response:
+              status: 200
+              body: { filename: /static/index.html }
+            response_headers_to_add: [{ header: { key: content-type, value: text/html } }]
+          - match: { path: /error-page }                   # upstream 5xx replaced by Envoy (Lua on the response path)
+            route: { cluster: app, prefix_rewrite: /status/503 }
+            typed_per_filter_config:
+              envoy.filters.http.lua:
+                "@type": type.googleapis.com/envoy.extensions.filters.http.lua.v3.LuaPerRoute
+                source_code:
+                  inline_string: |
+                    function envoy_on_response(h)
+                      local s = h:headers():get(":status")
+                      if s == "503" or s == "502" or s == "504" then
+                        h:headers():replace("x-error-page", "custom")
+                        h:headers():replace("content-type", "text/html")
+                        h:body(true):setBytes("<!doctype html><title>pxlab error</title><h1>Custom error page</h1><p>served by Envoy (Lua) because the upstream failed</p>")
+                      end
+                    end
+          - match: { path: /cors }
+            route: { cluster: app }
+            typed_per_filter_config:
+              envoy.filters.http.cors:
+                "@type": type.googleapis.com/envoy.extensions.filters.http.cors.v3.CorsPolicy
+                allow_origin_string_match: [{ safe_regex: { regex: ".*" } }]
+                allow_methods: "GET, POST, PUT, DELETE, OPTIONS"
+                allow_headers: "Authorization, Content-Type"
+                max_age: "600"
+          - match: { path: /secure }
+            route: { cluster: app }
+            response_headers_to_add:
+              - { header: { key: Strict-Transport-Security, value: "max-age=31536000; includeSubDomains" } }
+              - { header: { key: X-Content-Type-Options, value: nosniff } }
+              - { header: { key: X-Frame-Options, value: DENY } }
+              - { header: { key: Referrer-Policy, value: strict-origin-when-cross-origin } }
+          - match: { path: /compressible }
+            route: { cluster: app, prefix_rewrite: /size/65536 }
+          # everything else (incl. /cacheable/* -> the cache filter honours Cache-Control, /small, /bin/*, /delay/*)
+          - match: { prefix: / }
+            route: { cluster: app }

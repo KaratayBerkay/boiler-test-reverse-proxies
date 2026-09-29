@@ -1,0 +1,8 @@
+HTTP/1.1 503 Service Unavailable
+Content-Type: text/html
+X-Error-Page: custom
+Cache-Control: no-cache
+Content-Length: 147
+Connection: close
+
+<!doctype html><title>pxlab error</title><h1>Custom error page</h1><p>This custom error page was served by HAProxy because the upstream failed.</p>

@@ -1,0 +1,9 @@
+# JSON access log to stdout (docker logs)
+logging:
+  formats:
+    - name: json
+      format: '{"time":"%<cqtq>","remote_addr":"%<chi>","method":"%<cqhm>","uri":"%<cqup>","host":"%<{Host}cqh>","status":%<pssc>,"bytes":%<pscl>,"duration_ms":%<ttms>,"cache":"%<crc>","upstream":"%<shn>","request_id":"%<{X-Request-ID}cqh>","proto":"%<cqpv>","ua":"%<{User-Agent}cqh>"}'
+  logs:
+    - filename: access
+      format: json
+      mode: ascii

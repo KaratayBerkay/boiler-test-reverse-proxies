@@ -1,0 +1,116 @@
+{
+  "stack": "nginx",
+  "display": "NGINX 1.29",
+  "image": "nginx:1.29-otel",
+  "family": "nginx",
+  "category": "event-driven web server / reverse proxy (C); the most deployed proxy on the internet",
+  "run_id": "20260913-183226-07109b",
+  "started": "2026-09-13T15:32:26+00:00",
+  "notes": "Open-source nginx from the official `-otel` image, which also ships the njs, ACME (1.29 preview) and OpenTelemetry dynamic modules. Sticky sessions are done the OSS way (cookie = upstream address, map -> proxy_pass variable) because `sticky` is Plus-only; JWT is verified by an njs handler behind auth_request; PURGE is a refreshing subrequest (real purge is Plus / ngx_cache_purge); active health checks, brotli/zstd and HTTP/2 to non-gRPC upstreams are Plus / third-party features and are declared unsupported.",
+  "docs": [
+    "https://hub.docker.com/_/nginx",
+    "https://nginx.org/en/docs/http/ngx_http_proxy_module.html",
+    "https://nginx.org/en/docs/http/ngx_http_upstream_module.html",
+    "https://nginx.org/en/docs/http/ngx_http_acme_module.html",
+    "https://nginx.org/en/docs/ngx_otel_module.html",
+    "https://nginx.org/en/docs/njs/"
+  ],
+  "image_size": "250 MB",
+  "startup_s": null,
+  "version": "nginx version: nginx/1.29.8",
+  "containers": [
+    "pxlab-nginx",
+    "pxlab-nginx-exporter"
+  ],
+  "unsupported": {
+    "lb_active_health": "active health checks (health_check directive) are NGINX Plus only; open source is passive (max_fails / fail_timeout / proxy_next_upstream) - app3 keeps receiving traffic while its /healthz says 503",
+    "h2_upstream": "proxy_pass speaks HTTP/1.x to upstreams only; HTTP/2 towards upstreams exists solely for gRPC (grpc_pass)",
+    "proxy_protocol_upstream": "PROXY protocol towards upstreams is a stream (L4) feature (proxy_protocol on); for HTTP upstreams nginx sends X-Forwarded-For instead",
+    "compress_brotli": "ngx_brotli is a third-party module, not built into the official image (NGINX Plus ships it); build your own image to add it",
+    "compress_zstd": "zstd-nginx-module is third-party, not in the official image",
+    "docker_label_discovery": "nginx has no Docker/label provider; nginx-proxy (docker-gen) or NGINX Plus' API are separate projects"
+  },
+  "phases": {
+    "capabilities": {
+      "ready_s": 0.0,
+      "probes": {
+        "lb_round_robin": {
+          "detail": {
+            "app2": 10,
+            "app3": 10,
+            "app1": 10
+          },
+          "status": "ok",
+          "group": "load-balancing",
+          "title": "Round-robin over 3 backends",
+          "seconds": 0.05
+        },
+        "mtls_client_cert": {
+          "detail": "ConnectError: [SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: Hostname mismatch, certificate is not valid for 'mtls.lab'. (_ssl.c:1000)",
+          "status": "error",
+          "group": "tls",
+          "title": "Mutual TLS (client certificate required)",
+          "seconds": 0.01
+        },
+        "cache_hit": {
+          "detail": "counter 1 -> 1; X-Cache: MISS -> HIT age=None",
+          "status": "ok",
+          "group": "caching",
+          "title": "Response caching",
+          "seconds": 0.0
+        },
+        "cache_purge": {
+          "detail": "purge -> 200; counter 1 -> 1",
+          "status": "fail",
+          "group": "caching",
+          "title": "Cache purge",
+          "seconds": 0.01
+        },
+        "upstream_timeout": {
+          "detail": "504 after 2.00s",
+          "seconds": 2.0,
+          "status": "ok",
+          "group": "security",
+          "title": "Upstream read timeout"
+        },
+        "fault_injection": {
+          "detail": "503 share=0.24 codes={200: 76, 503: 24}",
+          "share": 0.24,
+          "status": "ok",
+          "group": "security",
+          "title": "Fault injection",
+          "seconds": 0.22
+        },
+        "bandwidth_limit": {
+          "detail": "200 1048576 bytes in 2.00s (523 KB/s)",
+          "seconds": 2.0,
+          "status": "ok",
+          "group": "security",
+          "title": "Bandwidth limiting"
+        },
+        "custom_error_page": {
+          "detail": "503 X-Error-Page=custom body='<!doctype html><title>pxlab error</title><h1>Custom error pa'",
+          "status": "ok",
+          "group": "operations",
+          "title": "Custom error page",
+          "seconds": 0.0
+        },
+        "hot_reload": {
+          "detail": "reload rc=0 '2026/09/13 15:32:32 [notice] 852#852: js vm init njs: 0000591C5F2BF680\\n2026/09/13 15:32:32 [notice] 852#852: signal proc'; then 200",
+          "status": "ok",
+          "group": "operations",
+          "title": "Configuration reload without restart",
+          "seconds": 0.12
+        }
+      },
+      "summary": {
+        "ok": 7,
+        "fail": 1,
+        "error": 1,
+        "unsupported": 0
+      },
+      "_seconds": 6.6
+    }
+  },
+  "finished": "2026-09-13T15:32:33+00:00"
+}

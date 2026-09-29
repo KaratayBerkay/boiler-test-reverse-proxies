@@ -1,0 +1,265 @@
+# pxlab reference configuration for Kong Gateway (OSS) - DB-less declarative config, expressions router.
+# "file:" placeholders (see gen.py) are replaced by PEM contents: certificates must be inline in a declarative config.
+# Annotated walkthrough: docs/configs/kong.md.
+_format_version: "3.0"
+_transform: true
+
+# ------------------------------------------------------------------------------------------------ TLS material
+certificates:
+  - id: 8f2f0f6e-0000-4000-8000-000000000001
+    cert: ${file:certs/app.lab.fullchain.crt}
+    key: ${file:certs/app.lab.key}
+  - id: 8f2f0f6e-0000-4000-8000-000000000002
+    cert: ${file:certs/b.lab.fullchain.crt}
+    key: ${file:certs/b.lab.key}
+snis:                                             # SNI -> certificate (b.lab gets its own)
+  - { name: app.lab,   certificate: { id: 8f2f0f6e-0000-4000-8000-000000000001 } }
+  - { name: a.lab,     certificate: { id: 8f2f0f6e-0000-4000-8000-000000000001 } }
+  - { name: proxy,     certificate: { id: 8f2f0f6e-0000-4000-8000-000000000001 } }
+  - { name: localhost, certificate: { id: 8f2f0f6e-0000-4000-8000-000000000001 } }
+  - { name: b.lab,     certificate: { id: 8f2f0f6e-0000-4000-8000-000000000002 } }
+ca_certificates:
+  - id: 8f2f0f6e-0000-4000-8000-0000000000ca
+    cert: ${file:certs/ca.crt}
+
+# ------------------------------------------------------------------------------------------------ upstreams (load balancing)
+upstreams:
+  - name: app
+    algorithm: round-robin
+    healthchecks:
+      active: { type: http, http_path: /healthz, healthy: { interval: 2, successes: 2 }, unhealthy: { interval: 2, http_failures: 2, tcp_failures: 2, timeouts: 2 } }
+      passive: { healthy: { successes: 1 }, unhealthy: { http_failures: 5, tcp_failures: 3, timeouts: 3 } }
+    targets: [{ target: app1:8080 }, { target: app2:8080 }, { target: app3:8080 }]
+  - name: weighted
+    algorithm: round-robin
+    targets: [{ target: app1:8080, weight: 300 }, { target: app2:8080, weight: 100 }]
+  - name: leastconn
+    algorithm: least-connections
+    targets: [{ target: app1:8080 }, { target: app2:8080 }, { target: slow:8080 }]
+  - name: hash                                    # consistent hashing on the X-User header
+    algorithm: consistent-hashing
+    hash_on: header
+    hash_on_header: x_user                        # nginx-variable spelling ($http_x_user): "X-User" silently hashes nothing
+    hash_fallback: ip
+    targets: [{ target: app1:8080 }, { target: app2:8080 }, { target: app3:8080 }]
+  - name: sticky                                  # Kong generates the cookie and hashes on it
+    algorithm: consistent-hashing
+    hash_on: cookie
+    hash_on_cookie: lab_sticky
+    hash_on_cookie_path: /
+    targets: [{ target: app1:8080 }, { target: app2:8080 }, { target: app3:8080 }]
+  - name: retry                                   # the dead member is only discovered by connection failures
+    algorithm: round-robin
+    targets: [{ target: app1:8080 }, { target: app2:8080 }, { target: app3:8099 }]
+  - name: cb                                      # passive: 3 HTTP failures -> unhealthy; active checks re-admit it
+    algorithm: round-robin
+    healthchecks:
+      passive: { type: http, healthy: { successes: 2 }, unhealthy: { http_statuses: [500, 502, 503, 504], http_failures: 3, tcp_failures: 2, timeouts: 2 } }
+      active: { type: http, http_path: /healthz, healthy: { interval: 5, successes: 2 }, unhealthy: { interval: 5, http_failures: 2 } }
+    targets: [{ target: app1:8080 }, { target: app2:8080 }, { target: flaky:8080 }]
+  - name: health                                  # active checks every second
+    algorithm: round-robin
+    healthchecks:
+      active: { type: http, http_path: /healthz, healthy: { interval: 1, successes: 2 }, unhealthy: { interval: 1, http_failures: 2, tcp_failures: 2, timeouts: 2 } }
+    targets: [{ target: app1:8080 }, { target: app2:8080 }, { target: app3:8080 }]
+  - name: canary_split                            # 90 / 10 by target weights
+    algorithm: round-robin
+    targets: [{ target: app1:8080, weight: 30 }, { target: app2:8080, weight: 30 }, { target: app3:8080, weight: 30 }, { target: canary:8080, weight: 10 }]
+
+# ------------------------------------------------------------------------------------------------ services
+services:
+  - name: app
+    host: app
+    port: 8080
+    protocol: http
+    retries: 3
+    connect_timeout: 3000
+    read_timeout: 30000
+    write_timeout: 30000
+    routes:
+      # --- host routing (priority 100)
+      - { name: a,         expression: 'http.host == "a.lab"',         priority: 100, plugins: [{ name: request-transformer, config: { add: { headers: ["X-Route:a"] } } }] }
+      - { name: redirect,  expression: 'http.host == "redirect.lab"',  priority: 100,
+          plugins: [{ name: pre-function, config: { access: ['kong.response.exit(301, "", { Location = "https://" .. kong.request.get_host() .. kong.request.get_path_with_query() })'] } }] }
+      - { name: mirror,    expression: 'http.host == "mirror.lab"',    priority: 100 }
+      - { name: pp,        expression: 'http.host == "pp.lab"',        priority: 100 }
+      - { name: h2,        expression: 'http.host == "h2.lab"',        priority: 100 }
+      - { name: auth,      expression: 'http.host == "auth.lab"',      priority: 100 }
+      - { name: jwt,       expression: 'http.host == "jwt.lab"',       priority: 100,
+          plugins: [{ name: jwt, config: { key_claim_name: iss, claims_to_verify: [exp], header_names: [Authorization] } }] }
+      - { name: acme,      expression: 'http.host == "acme.lab"',      priority: 100 }
+      - { name: mtls,      expression: 'http.host == "mtls.lab"',      priority: 100 }
+      # --- path features on any host (priority 50-60)
+      - { name: api-delete, expression: 'http.method == "DELETE" && http.path ^= "/api/"', strip_path: false, priority: 60,
+          plugins: [{ name: pre-function, config: { access: ['kong.response.exit(405, "method not allowed\n")'] } }] }
+      - { name: api,       expression: 'http.path ^= "/api/"',           priority: 50, strip_path: true, path_handling: v1,
+          plugins: [{ name: request-transformer, config: { add: { headers: ["X-Route:api"] } } }] }
+      - { name: versioned, expression: 'http.path ~ r#"^/v[0-9]+/"#',   strip_path: false, priority: 50,
+          plugins: [{ name: request-transformer, config: { add: { headers: ["X-Route:versioned"] } } }] }
+      - { name: old,       expression: 'http.path ~ r#"^/old/(?<rest>.*)$"#', strip_path: false, priority: 50,
+          plugins: [{ name: request-transformer, config: { add: { headers: ["X-Route:rewritten"] }, replace: { uri: "/new/$(uri_captures.rest)" } } }] }
+      - { name: redirect-me, expression: 'http.path == "/redirect-me"', strip_path: false, priority: 50,
+          plugins: [{ name: pre-function, config: { access: ['kong.response.exit(301, "", { Location = "/landing" })'] } }] }
+      - { name: limited,   expression: 'http.path == "/limited"',        strip_path: false, priority: 50,
+          plugins: [{ name: rate-limiting, config: { second: 10, policy: local, limit_by: ip, error_code: 429 } }] }
+      - { name: conn-limited, expression: 'http.path == "/conn-limited"', strip_path: false, priority: 50,
+          plugins: [{ name: request-transformer, config: { replace: { uri: /delay/1000 } } }] }
+      - { name: allowed,   expression: 'http.path == "/allowed"',        strip_path: false, priority: 50,
+          plugins: [{ name: ip-restriction, config: { allow: ["10.77.0.1"], status: 403 } }] }
+      - { name: denied,    expression: 'http.path == "/denied"',         strip_path: false, priority: 50,
+          plugins: [{ name: ip-restriction, config: { deny: ["10.77.0.0/24"], status: 403 } }] }
+      - { name: basic,     expression: 'http.path == "/basic"',          strip_path: false, priority: 50,
+          plugins: [{ name: basic-auth, config: { hide_credentials: true, realm: pxlab } }] }
+      - { name: upload,    expression: 'http.path == "/upload"',         strip_path: false, priority: 50,
+          plugins: [{ name: request-size-limiting, config: { allowed_payload_size: 1, size_unit: megabytes, require_content_length: false } }] }
+      - { name: fault,     expression: 'http.path == "/fault"',          strip_path: false, priority: 50,
+          plugins: [{ name: pre-function, config: { access: ['if math.random() < 0.2 then return kong.response.exit(503, "injected fault\n") end'] } }] }
+      - { name: bw,        expression: 'http.path == "/bw"',             strip_path: false, priority: 50,
+          plugins: [{ name: request-transformer, config: { replace: { uri: /bin/1048576 } } }] }
+      - { name: static,    expression: 'http.path == "/static/index.html"', strip_path: false, priority: 50,
+          plugins: [{ name: pre-function, config: { access: ['local f = io.open("/static/index.html"); local b = f:read("*a"); f:close(); return kong.response.exit(200, b, { ["Content-Type"] = "text/html" })'] } }] }
+      - name: error-page
+        expression: 'http.path == "/error-page"'
+        strip_path: false
+        priority: 50
+        plugins:
+          - { name: request-transformer, config: { replace: { uri: /status/503 } } }
+          - name: post-function                     # buffer the upstream response and replace a 5xx body with the custom page
+            config:
+              access: ['kong.service.request.enable_buffering()']
+              header_filter: ['if kong.response.get_status() >= 500 then kong.response.set_header("X-Error-Page", "custom"); kong.response.set_header("Content-Type", "text/html"); kong.response.clear_header("Content-Length") end']
+              body_filter: ['if kong.response.get_status() >= 500 then local f = io.open("/static/error.html"); local b = f:read("*a"); f:close(); kong.response.set_raw_body(b) end']
+      - { name: cors,      expression: 'http.path == "/cors"',           strip_path: false, priority: 50,
+          plugins: [{ name: cors, config: { origins: ["*"], methods: [GET, POST, PUT, DELETE, OPTIONS], headers: [Authorization, Content-Type], max_age: 600 } }] }
+      - { name: secure,    expression: 'http.path == "/secure"',         strip_path: false, priority: 50,
+          plugins: [{ name: response-transformer, config: { add: { headers: ["Strict-Transport-Security:max-age=31536000; includeSubDomains", "X-Content-Type-Options:nosniff", "X-Frame-Options:DENY", "Referrer-Policy:strict-origin-when-cross-origin"] } } }] }
+      - { name: cacheable, expression: 'http.path ^= "/cacheable"',      strip_path: false, priority: 50,
+          plugins: [{ name: proxy-cache, config: { strategy: memory, cache_control: true, cache_ttl: 60, content_type: ["application/json", "application/json; charset=utf-8", "text/plain; charset=utf-8"], response_code: [200], request_method: [GET, HEAD] } }] }
+      - { name: compressible, expression: 'http.path == "/compressible"', strip_path: false, priority: 50,
+          plugins: [{ name: request-transformer, config: { replace: { uri: /size/65536 } } }] }
+      - { name: catch-all, expression: 'http.path ^= "/"',              strip_path: false, priority: 1 }
+  - name: canary
+    host: canary
+    port: 8080
+    protocol: http
+    routes:
+      - { name: canary-hdr, expression: 'http.headers.x_canary == "1"', strip_path: false, priority: 56 }
+      - { name: canary-query, expression: 'http.queries.beta == "1"',  strip_path: false, priority: 56 }
+  - name: b
+    host: b1
+    port: 8080
+    protocol: http
+    routes:
+      - { name: b, expression: 'http.host == "b.lab"', priority: 100, plugins: [{ name: request-transformer, config: { add: { headers: ["X-Route:b"] } } }] }
+  - name: weighted
+    host: weighted
+    port: 8080
+    protocol: http
+    routes: [{ name: weighted, expression: 'http.host == "weighted.lab"', priority: 100 }]
+  - name: leastconn
+    host: leastconn
+    port: 8080
+    protocol: http
+    routes: [{ name: leastconn, expression: 'http.host == "leastconn.lab"', priority: 100 }]
+  - name: hash
+    host: hash
+    port: 8080
+    protocol: http
+    routes: [{ name: hash, expression: 'http.host == "hash.lab"', priority: 100 }]
+  - name: sticky
+    host: sticky
+    port: 8080
+    protocol: http
+    routes: [{ name: sticky, expression: 'http.host == "sticky.lab"', priority: 100 }]
+  - name: retry
+    host: retry
+    port: 8080
+    protocol: http
+    retries: 3
+    routes: [{ name: retry, expression: 'http.host == "retry.lab"', priority: 100 }]
+  - name: cb
+    host: cb
+    port: 8080
+    protocol: http
+    retries: 3
+    routes: [{ name: cb, expression: 'http.host == "cb.lab"', priority: 100 }]
+  - name: health
+    host: health
+    port: 8080
+    protocol: http
+    routes: [{ name: health, expression: 'http.host == "health.lab"', priority: 100 }]
+  - name: canary_split
+    host: canary_split
+    port: 8080
+    protocol: http
+    routes: [{ name: canary-split, expression: 'http.host == "canary.lab"', priority: 100 }]
+  - name: app_tls                                 # TLS re-encryption, verified against the lab CA (SNI = host app1)
+    host: app1
+    port: 8443
+    protocol: https
+    tls_verify: true
+    tls_verify_depth: 2
+    ca_certificates: [8f2f0f6e-0000-4000-8000-0000000000ca]
+    routes: [{ name: tls, expression: 'http.host == "tls.lab"', priority: 100 }]
+  - name: app_t2                                  # 2 s read timeout
+    host: app
+    port: 8080
+    protocol: http
+    retries: 0
+    read_timeout: 2000
+    routes: [{ name: timeout, expression: 'http.path == "/timeout"', strip_path: false, priority: 50, plugins: [{ name: request-transformer, config: { replace: { uri: /delay/5000 } } }] }]
+  - name: grpc                                    # gRPC -> h2c upstream
+    host: app1
+    port: 9090
+    protocol: grpc
+    routes: [{ name: grpc, expression: 'http.path ^= "/grpc.health.v1.Health/"', strip_path: false, priority: 50, protocols: [grpc, grpcs] }]
+  # --- L4 (stream listeners 9000 / 9001 udp / 8445 tls passthrough)
+  - name: tcp_app1
+    host: app1
+    port: 8080
+    protocol: tcp
+    routes: [{ name: tcp9000, protocols: [tcp], destinations: [{ port: 9000 }] }]
+  - name: udp_app1
+    host: app1
+    port: 9002
+    protocol: udp
+    routes: [{ name: udp9001, protocols: [udp], destinations: [{ port: 9001 }] }]
+  - name: passthrough_app1
+    host: app1
+    port: 8443
+    protocol: tls_passthrough
+    routes: [{ name: passthrough, protocols: [tls_passthrough], snis: [passthrough.lab], destinations: [{ port: 8445 }] }]
+
+# ------------------------------------------------------------------------------------------------ consumers (basic auth / JWT)
+consumers:
+  - username: lab
+    basicauth_credentials: [{ username: lab, password: lab-pass }]
+    jwt_secrets: [{ key: pxlab, algorithm: HS256, secret: pxlab-jwt-secret-please-change-0123456789 }]
+
+# ------------------------------------------------------------------------------------------------ global plugins
+plugins:
+  - name: pre-function                            # headers every upstream sees (Kong adds X-Forwarded-* and X-Real-IP itself)
+    config:
+      access:
+        - |
+          kong.service.request.set_header("X-Lab-Proxy", "kong")
+          kong.service.request.set_header("Forwarded", "for=" .. kong.client.get_forwarded_ip() .. ";proto=" .. kong.request.get_forwarded_scheme() .. ";host=" .. kong.request.get_forwarded_host())
+  - name: response-transformer
+    config: { remove: { headers: ["X-Powered-By"] }, add: { headers: ['Alt-Svc:h3=":8443"; ma=86400'] } }
+  - name: correlation-id
+    config: { header_name: X-Request-ID, generator: uuid, echo_downstream: true }
+  - name: prometheus
+    config: { per_consumer: false, status_code_metrics: true, latency_metrics: true, bandwidth_metrics: true, upstream_health_metrics: true }
+  - name: opentelemetry
+    config: { traces_endpoint: http://jaeger:4318/v1/traces, sampling_rate: 0.001, header_type: w3c, resource_attributes: { service.name: kong } }
+  - name: acme                                    # certificates for acme.lab from Pebble (HTTP-01 on :80)
+    config:
+      account_email: admin@pxlab.test
+      api_uri: https://static:14001/directory     # Kong appends "/directory" to the URL; Pebble serves /dir -> shim in shared/staticsrv
+      tos_accepted: true
+      domains: [acme.lab]
+      storage: shm
+      storage_config: { shm: { shm_name: kong } }
+      cert_type: ecc
+      renew_threshold_days: 30
+      allow_any_domain: false

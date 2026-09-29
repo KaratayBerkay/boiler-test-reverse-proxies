@@ -1,0 +1,39 @@
+{
+  "stack": "haproxy",
+  "display": "HAProxy 3.4",
+  "image": "haproxy:lts",
+  "family": "haproxy",
+  "category": "TCP/HTTP load balancer (C, event-driven, multi-threaded); the reference L4/L7 balancer",
+  "run_id": "20260913-185420-37fd8b",
+  "started": "2026-09-13T15:54:20+00:00",
+  "notes": "Official HAProxy LTS image (3.4.4): QUIC/HTTP/3 through OpenSSL 3.5's native QUIC API, ACME client (experimental, crt-store starts with a temporary key pair until Pebble issues the certificate), Lua forward-auth through the internal httpclient, jwt_verify for JWTs, stick-tables for rate/connection limits, bwlim filter, built-in cache and Prometheus exporter. Master-worker mode makes `kill -USR2 1` a seamless reload. No UDP, no mirroring, no purge, gzip only.",
+  "docs": [
+    "https://hub.docker.com/_/haproxy",
+    "https://docs.haproxy.org/3.4/configuration.html",
+    "https://github.com/haproxy/wiki/wiki/ACME:--native-haproxy",
+    "https://www.haproxy.com/documentation/haproxy-configuration-tutorials/"
+  ],
+  "image_size": "185 MB",
+  "startup_s": null,
+  "version": "Error response from daemon: container ae3b111f4d080fc60c556aaccaa221660287a9d8b0b674db8f1adaede1c137ff is not running",
+  "containers": [
+    "pxlab-haproxy"
+  ],
+  "unsupported": {
+    "udp_l4": "HAProxy proxies TCP and QUIC only; there is no generic UDP proxying (only syslog/DNS forwarding)",
+    "lb_mirror": "no native request mirroring; use tcp-level tee or SPOE + an external agent",
+    "cache_purge": "the built-in cache is a small-object accelerator without an invalidation API; entries expire by max-age (or reload)",
+    "cache_stale_on_error": "the cache has no stale-if-error / grace mode; an expired entry is refetched and the origin's 503 is returned",
+    "compress_brotli": "compression uses libslz (gzip/deflate only); no brotli or zstd support",
+    "compress_zstd": "no zstd (slz only)",
+    "tracing_otel": "no OpenTelemetry exporter in the official build (the OpenTracing filter needs a separate addon build)",
+    "docker_label_discovery": "no Docker provider; the Data Plane API / Ingress Controller do this in other setups"
+  },
+  "phases": {
+    "capabilities": {
+      "_error": "RuntimeError: proxy not ready after 60s: ConnectError: [Errno 111] Connection refused",
+      "_seconds": 60.2
+    }
+  },
+  "finished": "2026-09-13T15:55:21+00:00"
+}

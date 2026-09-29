@@ -1,0 +1,31 @@
+# pxlab reference configuration for Envoy - BOOTSTRAP. Listeners / clusters / routes come from file-based xDS
+# (lds.yaml, cds.yaml, rds.yaml in this directory, watched: replacing a file IS the reload, no restart needed).
+# Annotated walkthrough: docs/configs/envoy.md.
+node:
+  id: pxlab-envoy
+  cluster: pxlab
+
+admin:                                    # :9101 -> /server_info /stats /stats/prometheus /config_dump /clusters /ready
+  address: { socket_address: { address: 0.0.0.0, port_value: 9101 } }
+  access_log:
+    - name: envoy.access_loggers.file
+      typed_config:
+        "@type": type.googleapis.com/envoy.extensions.access_loggers.file.v3.FileAccessLog
+        path: /dev/null
+
+dynamic_resources:
+  lds_config:
+    path_config_source:
+      path: /etc/envoy/lds.yaml
+      watched_directory: { path: /etc/envoy }
+  cds_config:
+    path_config_source:
+      path: /etc/envoy/cds.yaml
+      watched_directory: { path: /etc/envoy }
+
+overload_manager:
+  resource_monitors:
+    - name: envoy.resource_monitors.global_downstream_max_connections
+      typed_config:
+        "@type": type.googleapis.com/envoy.extensions.resource_monitors.downstream_connections.v3.DownstreamConnectionsConfig
+        max_active_downstream_connections: 60000

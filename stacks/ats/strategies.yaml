@@ -1,0 +1,84 @@
+# NextHop strategies (ATS 9): the load-balancing pools used by remap rules through @strategy='name'
+hosts:
+  - &app1 { host: app1, protocol: [{ scheme: http, port: 8080, health_check_url: "http://app1:8080/healthz" }] }
+  - &app2 { host: app2, protocol: [{ scheme: http, port: 8080, health_check_url: "http://app2:8080/healthz" }] }
+  - &app3 { host: app3, protocol: [{ scheme: http, port: 8080, health_check_url: "http://app3:8080/healthz" }] }
+  - &slow { host: slow, protocol: [{ scheme: http, port: 8080 }] }
+  - &flaky { host: flaky, protocol: [{ scheme: http, port: 8080 }] }
+  - &canary { host: canary, protocol: [{ scheme: http, port: 8080 }] }
+  - &dead { host: app3, protocol: [{ scheme: http, port: 8099 }] }
+groups:
+  - &app_group
+    - { <<: *app1, weight: 1.0 }
+    - { <<: *app2, weight: 1.0 }
+    - { <<: *app3, weight: 1.0 }
+  - &weighted_group
+    - { <<: *app1, weight: 3.0 }
+    - { <<: *app2, weight: 1.0 }
+  - &retry_group
+    - { <<: *app1, weight: 1.0 }
+    - { <<: *app2, weight: 1.0 }
+    - { <<: *dead, weight: 1.0 }
+  - &cb_group
+    - { <<: *app1, weight: 1.0 }
+    - { <<: *app2, weight: 1.0 }
+    - { <<: *flaky, weight: 1.0 }
+  - &canary_group
+    - { <<: *app1, weight: 30.0 }
+    - { <<: *app2, weight: 30.0 }
+    - { <<: *app3, weight: 30.0 }
+    - { <<: *canary, weight: 10.0 }
+strategies:
+  - strategy: app
+    policy: rr_strict
+    go_direct: false
+    parent_is_proxy: false
+    groups:
+      - *app_group
+    scheme: http
+    failover:
+      max_simple_retries: 2
+      ring_mode: exhaust_ring
+      response_codes: [502, 503, 504]
+      health_check: [passive]
+  - strategy: weighted
+    policy: consistent_hash
+    hash_key: url
+    go_direct: false
+    parent_is_proxy: false
+    groups:
+      - *weighted_group
+    scheme: http
+  - strategy: retry
+    policy: rr_strict
+    go_direct: false
+    parent_is_proxy: false
+    groups:
+      - *retry_group
+    scheme: http
+    failover:
+      max_simple_retries: 3
+      ring_mode: exhaust_ring
+      response_codes: [502, 503, 504]
+      health_check: [passive]
+  - strategy: cb
+    policy: rr_strict
+    go_direct: false
+    parent_is_proxy: false
+    groups:
+      - *cb_group
+    scheme: http
+    failover:
+      max_simple_retries: 3
+      ring_mode: exhaust_ring
+      response_codes: [500, 502, 503, 504]
+      markdown_codes: [500, 502, 503, 504]
+      health_check: [passive]
+  - strategy: canary
+    policy: consistent_hash
+    hash_key: url
+    go_direct: false
+    parent_is_proxy: false
+    groups:
+      - *canary_group
+    scheme: http

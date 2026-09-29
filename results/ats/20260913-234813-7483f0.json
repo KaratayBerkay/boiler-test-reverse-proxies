@@ -1,0 +1,1453 @@
+{
+  "stack": "ats",
+  "display": "Apache Traffic Server 9.2",
+  "image": "pxlab-ats:latest",
+  "family": "cache",
+  "category": "CDN-grade caching proxy (C++): remap rules, NextHop strategies, plugins (Yahoo/Apple/Comcast lineage)",
+  "run_id": "20260913-234813-7483f0",
+  "started": "2026-09-13T20:48:13+00:00",
+  "notes": "ATS 9.2.3 from Ubuntu packages. remap.config is generated from remap.spec because ATS compares the request URL's port with the from-URL; NextHop strategies.yaml provides round-robin, weights and passive failover; header_rewrite does routing by header/query, method 405, IP lists, basic auth, body limit, fault injection, CORS and security headers; conf_remap sets per-remap timeouts, fq_pacing paces bandwidth, rate_limit.so caps concurrency, multiplexer mirrors, statichit serves a file, sslheaders exposes the client certificate, compress.so does gzip/brotli, sni.yaml gives mTLS and SNI tunnels, and stats_over_http/traffic_ctl are the admin surface. JSON access log through logging.yaml to stdout.",
+  "docs": [
+    "https://docs.trafficserver.apache.org/en/9.2.x/admin-guide/configuration/index.en.html",
+    "https://docs.trafficserver.apache.org/en/9.2.x/admin-guide/files/remap.config.en.html",
+    "https://docs.trafficserver.apache.org/en/9.2.x/admin-guide/files/strategies.yaml.en.html",
+    "https://docs.trafficserver.apache.org/en/9.2.x/admin-guide/plugins/header_rewrite.en.html",
+    "https://docs.trafficserver.apache.org/en/9.2.x/admin-guide/files/sni.yaml.en.html"
+  ],
+  "image_size": "235 MB",
+  "startup_s": 6.1,
+  "version": "Traffic Server 9.2.3 Feb 12 2026 02:40:38 localhost",
+  "containers": [
+    "pxlab-ats"
+  ],
+  "unsupported": {
+    "lb_least_conn": "NextHop strategies offer rr_strict / rr_ip / first_live / latched / consistent_hash - no least-connections",
+    "lb_weighted": "strategies apply weights only to consistent_hash (same URL -> same host); there is no weighted round-robin in 9.2",
+    "lb_canary_split": "no weighted round-robin (see lb_weighted); a canary needs the consistent-hash weights on varying keys",
+    "lb_hash_header": "consistent_hash keys are url / path / cache_key / hostname - a request header cannot be the key",
+    "lb_sticky_cookie": "no cookie stickiness (cookie_remap can route on cookies but does not set them)",
+    "lb_active_health": "ATS 9 strategies only do passive health (active origin checks arrived with ATS 10)",
+    "lb_outlier_ejection": "strategies failover retries 5xx on the next host (errors hidden) but markdown_codes did not take the flaky host out of rotation in 9.2.3",
+    "route_header": "remap has no header/query conditions and header_rewrite's set-destination is overridden by the NextHop strategy that picks the origin",
+    "route_query": "see route_header",
+    "compress_brotli": "the Ubuntu compress.so is built without brotli (gzip only)",
+    "h2_upstream": "ATS 9 speaks HTTP/1.1 to origins",
+    "proxy_protocol_upstream": "no PROXY protocol towards origins in 9.2",
+    "tcp_l4": "ATS is an HTTP proxy (sni.yaml tunnel_route is the only L4 feature)",
+    "udp_l4": "HTTP only",
+    "http3": "the Ubuntu build has no QUIC (experimental in 9.x, needs quiche)",
+    "h2c_frontend": "cleartext HTTP/2 is not supported on plain ports (h2 via ALPN only)",
+    "grpc": "no HTTP/2 to origins, so no gRPC proxying",
+    "acme_auto_cert": "acme.so only serves challenge files; there is no ACME client",
+    "rate_limit": "rate_limit.so limits concurrency per remap, not requests per second per client",
+    "jwt_auth": "no JWT validation plugin (uri_signing.so signs URLs; tslua could do it)",
+    "forward_auth": "authproxy.so forwards the ORIGINAL path to the authorizer, which does not fit the lab's /auth service",
+    "custom_error_page": "origin error bodies pass through; body_factory only styles ATS-generated errors",
+    "bandwidth_limit": "fq_pacing.so needs the kernel fq qdisc (SO_MAX_PACING_RATE) on the interface, which a container does not have",
+    "compress_zstd": "compress.so does gzip and brotli",
+    "metrics_prometheus": "stats_over_http.so exposes JSON at /_stats; Prometheus needs an exporter",
+    "tracing_otel": "no OpenTelemetry",
+    "docker_label_discovery": "no Docker provider"
+  },
+  "phases": {
+    "capabilities": {
+      "ready_s": 0.1,
+      "probes": {
+        "route_host": {
+          "detail": "a.lab -> app2 (X-Route=a), b.lab -> b1",
+          "status": "ok",
+          "group": "routing",
+          "title": "Host-based routing",
+          "seconds": 0.04
+        },
+        "route_path_prefix": {
+          "detail": "upstream path=/hello query=x=1 X-Route=api",
+          "status": "ok",
+          "group": "routing",
+          "title": "Path prefix route + strip prefix",
+          "seconds": 0.03
+        },
+        "route_path_regex": {
+          "detail": "path=/v2/things X-Route=versioned",
+          "status": "ok",
+          "group": "routing",
+          "title": "Regex path route",
+          "seconds": 0.0
+        },
+        "route_rewrite": {
+          "detail": "upstream path=/new/thing X-Route=rewritten",
+          "status": "ok",
+          "group": "routing",
+          "title": "URL rewrite (regex capture)",
+          "seconds": 0.0
+        },
+        "route_redirect": {
+          "detail": "301 Location=http://app.lab/landing",
+          "status": "ok",
+          "group": "routing",
+          "title": "Redirect issued by the proxy",
+          "seconds": 0.0
+        },
+        "route_header": {
+          "status": "unsupported",
+          "detail": "remap has no header/query conditions and header_rewrite's set-destination is overridden by the NextHop strategy that picks the origin",
+          "group": "routing",
+          "title": "Header-based routing",
+          "seconds": 0
+        },
+        "route_query": {
+          "status": "unsupported",
+          "detail": "see route_header",
+          "group": "routing",
+          "title": "Query-parameter routing",
+          "seconds": 0
+        },
+        "route_method": {
+          "detail": "DELETE -> 405 (x-instance=None)",
+          "status": "ok",
+          "group": "routing",
+          "title": "Method-based rule",
+          "seconds": 0.0
+        },
+        "redirect_https": {
+          "detail": "301 Location=https://redirect.lab/x?q=1",
+          "status": "ok",
+          "group": "routing",
+          "title": "HTTP -> HTTPS redirect",
+          "seconds": 0.0
+        },
+        "lb_round_robin": {
+          "detail": {
+            "app3": 10,
+            "app1": 10,
+            "app2": 10
+          },
+          "status": "ok",
+          "group": "load-balancing",
+          "title": "Round-robin over 3 backends",
+          "seconds": 0.09
+        },
+        "lb_weighted": {
+          "status": "unsupported",
+          "detail": "strategies apply weights only to consistent_hash (same URL -> same host); there is no weighted round-robin in 9.2",
+          "group": "load-balancing",
+          "title": "Weighted round-robin (3:1)",
+          "seconds": 0
+        },
+        "lb_least_conn": {
+          "status": "unsupported",
+          "detail": "NextHop strategies offer rr_strict / rr_ip / first_live / latched / consistent_hash - no least-connections",
+          "group": "load-balancing",
+          "title": "Least-connections",
+          "seconds": 0
+        },
+        "lb_hash_header": {
+          "status": "unsupported",
+          "detail": "consistent_hash keys are url / path / cache_key / hostname - a request header cannot be the key",
+          "group": "load-balancing",
+          "title": "Consistent hashing on a header",
+          "seconds": 0
+        },
+        "lb_sticky_cookie": {
+          "status": "unsupported",
+          "detail": "no cookie stickiness (cookie_remap can route on cookies but does not set them)",
+          "group": "load-balancing",
+          "title": "Cookie stickiness",
+          "seconds": 0
+        },
+        "lb_retry_dead_member": {
+          "detail": "codes={200: 30} max_ms=22",
+          "max_ms": 22.1,
+          "status": "ok",
+          "group": "load-balancing",
+          "title": "Retry on connect failure",
+          "seconds": 0.11
+        },
+        "lb_outlier_ejection": {
+          "status": "unsupported",
+          "detail": "strategies failover retries 5xx on the next host (errors hidden) but markdown_codes did not take the flaky host out of rotation in 9.2.3",
+          "group": "load-balancing",
+          "title": "Passive health / outlier ejection",
+          "seconds": 0
+        },
+        "lb_active_health": {
+          "status": "unsupported",
+          "detail": "ATS 9 strategies only do passive health (active origin checks arrived with ATS 10)",
+          "group": "load-balancing",
+          "title": "Active health checks",
+          "seconds": 0
+        },
+        "lb_canary_split": {
+          "status": "unsupported",
+          "detail": "no weighted round-robin (see lb_weighted); a canary needs the consistent-hash weights on varying keys",
+          "group": "load-balancing",
+          "title": "Weighted traffic split (canary)",
+          "seconds": 0
+        },
+        "lb_mirror": {
+          "detail": "shadow received 20/20",
+          "mirrored": 20,
+          "status": "ok",
+          "group": "load-balancing",
+          "title": "Request mirroring / shadowing",
+          "seconds": 1.17
+        },
+        "lb_upstream_keepalive": {
+          "detail": "new upstream connections for 60 requests: {'app3': 1, 'app1': 1, 'app2': 1}",
+          "upstream_connections": 3,
+          "status": "ok",
+          "group": "load-balancing",
+          "title": "Upstream connection pooling",
+          "seconds": 0.37
+        },
+        "http2_tls": {
+          "detail": "HTTP/2 200 upstream proto=HTTP/1.1",
+          "status": "ok",
+          "group": "protocols",
+          "title": "HTTP/2 (TLS, ALPN)",
+          "seconds": 0.01
+        },
+        "h2c_frontend": {
+          "status": "unsupported",
+          "detail": "cleartext HTTP/2 is not supported on plain ports (h2 via ALPN only)",
+          "group": "protocols",
+          "title": "HTTP/2 cleartext (prior knowledge) on :8080",
+          "seconds": 0
+        },
+        "http3": {
+          "status": "unsupported",
+          "detail": "the Ubuntu build has no QUIC (experimental in 9.x, needs quiche)",
+          "group": "protocols",
+          "title": "HTTP/3 (QUIC)",
+          "seconds": 0
+        },
+        "websocket": {
+          "detail": "text echo='hello' binary 4096=4096 instance=app1",
+          "status": "ok",
+          "group": "protocols",
+          "title": "WebSocket proxying",
+          "seconds": 0.02
+        },
+        "sse_streaming": {
+          "detail": "events=5 first=0.0s total=1.21s",
+          "status": "ok",
+          "group": "protocols",
+          "title": "Server-sent events (no response buffering)",
+          "seconds": 1.21
+        },
+        "grpc": {
+          "status": "unsupported",
+          "detail": "no HTTP/2 to origins, so no gRPC proxying",
+          "group": "protocols",
+          "title": "gRPC proxying (h2 -> upstream h2c :9090)",
+          "seconds": 0
+        },
+        "h2_upstream": {
+          "status": "unsupported",
+          "detail": "ATS 9 speaks HTTP/1.1 to origins",
+          "group": "protocols",
+          "title": "HTTP/2 to the upstream (h2c)",
+          "seconds": 0
+        },
+        "tls_upstream": {
+          "detail": "listener=tls tls={'version': 'TLS1.3', 'sni': 'app1', 'alpn': ''}",
+          "status": "ok",
+          "group": "protocols",
+          "title": "TLS re-encryption to the upstream (verified)",
+          "seconds": 0.03
+        },
+        "proxy_protocol_upstream": {
+          "status": "unsupported",
+          "detail": "no PROXY protocol towards origins in 9.2",
+          "group": "protocols",
+          "title": "PROXY protocol v2 to the upstream",
+          "seconds": 0
+        },
+        "proxy_protocol_accept": {
+          "detail": "X-Forwarded-For=203.0.113.9 remote_addr=10.77.0.2:56910",
+          "status": "ok",
+          "group": "protocols",
+          "title": "Accept PROXY protocol from clients (:8082)",
+          "seconds": 0.0
+        },
+        "tcp_l4": {
+          "status": "unsupported",
+          "detail": "ATS is an HTTP proxy (sni.yaml tunnel_route is the only L4 feature)",
+          "group": "protocols",
+          "title": "TCP (L4) proxying",
+          "seconds": 0
+        },
+        "udp_l4": {
+          "status": "unsupported",
+          "detail": "HTTP only",
+          "group": "protocols",
+          "title": "UDP proxying",
+          "seconds": 0
+        },
+        "tls_passthrough_sni": {
+          "detail": "subject=CN = backend.lab, O = pxlab TLSv1.3",
+          "status": "ok",
+          "group": "protocols",
+          "title": "TLS passthrough by SNI (L4)",
+          "seconds": 0.06
+        },
+        "tls_termination": {
+          "detail": "200 cert=CN = app.lab, O = pxlab TLSv1.3 X-Forwarded-Proto=https",
+          "status": "ok",
+          "group": "tls",
+          "title": "TLS termination",
+          "seconds": 0.05
+        },
+        "tls13": {
+          "detail": "TLSv1.3 TLS_AES_256_GCM_SHA384",
+          "status": "ok",
+          "group": "tls",
+          "title": "TLS 1.3 negotiated",
+          "seconds": 0.01
+        },
+        "tls_legacy_refused": {
+          "detail": "80973F2E61750000:error:0A00042E:SSL routines:ssl3_read_bytes:tlsv1 alert protocol version:../ssl/record/rec_layer_s3.c:918:SSL alert number 70\nProtocol: TLSv1.1\n    Protocol  : TLSv1.1",
+          "status": "ok",
+          "group": "tls",
+          "title": "TLS 1.0/1.1 refused",
+          "seconds": 0.53
+        },
+        "mtls_client_cert": {
+          "detail": "without cert: ReadError: [SSL: TLSV13_ALERT_CERTIFICATE_REQUIRED] tlsv13 alert certificate req; with cert: 200; forwarded: {'Client-Ip': '10.77.0.1', 'X-Client-Cert-Issuer': 'CN = pxlab CA, O = pxlab', 'X-Client-Cert-Subject': 'CN = lab-client, O = pxlab'}",
+          "cert_headers": {
+            "Client-Ip": "10.77.0.1",
+            "X-Client-Cert-Issuer": "CN = pxlab CA, O = pxlab",
+            "X-Client-Cert-Subject": "CN = lab-client, O = pxlab"
+          },
+          "status": "ok",
+          "group": "tls",
+          "title": "Mutual TLS (client certificate required)",
+          "seconds": 0.02
+        },
+        "sni_multi_cert": {
+          "detail": "app.lab -> CN = app.lab, O = pxlab; b.lab -> CN = b.lab, O = pxlab",
+          "status": "ok",
+          "group": "tls",
+          "title": "Multiple certificates selected by SNI",
+          "seconds": 0.08
+        },
+        "acme_auto_cert": {
+          "status": "unsupported",
+          "detail": "acme.so only serves challenge files; there is no ACME client",
+          "group": "tls",
+          "title": "Automatic certificate via ACME (Pebble)",
+          "seconds": 0
+        },
+        "cache_hit": {
+          "detail": "origin app1#1 -> app2#1; X-Cache: miss -> miss age=0",
+          "status": "fail",
+          "group": "caching",
+          "title": "Response caching",
+          "seconds": 0.01
+        },
+        "cache_purge": {
+          "detail": "purge -> 404; origin app1#1 -> app2#1",
+          "keepalive_quirk": false,
+          "status": "fail",
+          "group": "caching",
+          "title": "Cache purge",
+          "seconds": 0.01
+        },
+        "cache_stale_on_error": {
+          "detail": "first 200 origin=app3#1; after expiry with origin 503: 503 origin=app3#None X-Cache=miss",
+          "status": "fail",
+          "group": "caching",
+          "title": "Serve stale on upstream error",
+          "seconds": 2.61
+        },
+        "compress_gzip": {
+          "detail": "Content-Encoding=gzip 380 bytes (65536 uncompressed)",
+          "bytes": 380,
+          "status": "ok",
+          "group": "compression",
+          "title": "gzip compression",
+          "seconds": 0.0
+        },
+        "compress_brotli": {
+          "status": "unsupported",
+          "detail": "the Ubuntu compress.so is built without brotli (gzip only)",
+          "group": "compression",
+          "title": "Brotli compression",
+          "seconds": 0
+        },
+        "compress_zstd": {
+          "status": "unsupported",
+          "detail": "compress.so does gzip and brotli",
+          "group": "compression",
+          "title": "Zstandard compression",
+          "seconds": 0
+        },
+        "xff_headers": {
+          "detail": "XFF=10.77.0.1 Proto=http Host=app.lab:18080 X-Real-IP=10.77.0.1",
+          "status": "ok",
+          "group": "headers",
+          "title": "X-Forwarded-* headers",
+          "seconds": 0.0
+        },
+        "forwarded_rfc7239": {
+          "detail": "Forwarded='for=10.77.0.1;proto=http;host=app.lab:18080'",
+          "status": "ok",
+          "group": "headers",
+          "title": "RFC 7239 Forwarded header",
+          "seconds": 0.0
+        },
+        "header_add_remove": {
+          "detail": "X-Lab-Proxy=ats X-Powered-By=removed Server=ats",
+          "status": "ok",
+          "group": "headers",
+          "title": "Header manipulation",
+          "seconds": 0.0
+        },
+        "request_id": {
+          "detail": "'d0ef5cfd-d970-4adb-ab18-c691d1bd894c-193' / 'd0ef5cfd-d970-4adb-ab18-c691d1bd894c-194'",
+          "status": "ok",
+          "group": "headers",
+          "title": "Request ID generation",
+          "seconds": 0.01
+        },
+        "rate_limit": {
+          "status": "unsupported",
+          "detail": "rate_limit.so limits concurrency per remap, not requests per second per client",
+          "group": "security",
+          "title": "Request rate limiting",
+          "seconds": 0
+        },
+        "connection_limit": {
+          "detail": "codes={200: 3, 429: 9}",
+          "rejected": 9,
+          "status": "ok",
+          "group": "security",
+          "title": "Concurrent connection limit",
+          "seconds": 1.01
+        },
+        "ip_allow_deny": {
+          "detail": "/allowed=200 /denied=403",
+          "status": "ok",
+          "group": "security",
+          "title": "IP allow / deny lists",
+          "seconds": 0.0
+        },
+        "basic_auth": {
+          "detail": "no creds=401 (None) creds=200",
+          "status": "ok",
+          "group": "security",
+          "title": "HTTP basic authentication",
+          "seconds": 0.0
+        },
+        "jwt_auth": {
+          "status": "unsupported",
+          "detail": "no JWT validation plugin (uri_signing.so signs URLs; tslua could do it)",
+          "group": "security",
+          "title": "JWT validation (HS256)",
+          "seconds": 0
+        },
+        "forward_auth": {
+          "status": "unsupported",
+          "detail": "authproxy.so forwards the ORIGINAL path to the authorizer, which does not fit the lab's /auth service",
+          "group": "security",
+          "title": "External authorization (forward auth / auth_request / ext_authz)",
+          "seconds": 0
+        },
+        "cors": {
+          "detail": "204 ACAO=* methods=GET, POST, PUT, DELETE, OPTIONS",
+          "status": "ok",
+          "group": "security",
+          "title": "CORS preflight answered by the proxy",
+          "seconds": 0.0
+        },
+        "security_headers": {
+          "detail": "{'strict-transport-security': 'max-age=31536000; includeSubDomains', 'x-content-type-options': 'nosniff', 'x-frame-options': 'DENY', 'referrer-policy': 'strict-origin-when-cross-origin'}",
+          "status": "ok",
+          "group": "security",
+          "title": "Security response headers",
+          "seconds": 0.0
+        },
+        "body_size_limit": {
+          "detail": "2MiB=413 100KiB=200",
+          "status": "ok",
+          "group": "security",
+          "title": "Request body size limit",
+          "seconds": 0.01
+        },
+        "upstream_timeout": {
+          "detail": "504 after 2.85s",
+          "seconds": 2.85,
+          "status": "ok",
+          "group": "security",
+          "title": "Upstream read timeout"
+        },
+        "fault_injection": {
+          "detail": "503 share=0.24 codes={503: 24, 200: 76}",
+          "share": 0.24,
+          "status": "ok",
+          "group": "security",
+          "title": "Fault injection",
+          "seconds": 0.26
+        },
+        "bandwidth_limit": {
+          "status": "unsupported",
+          "detail": "fq_pacing.so needs the kernel fq qdisc (SO_MAX_PACING_RATE) on the interface, which a container does not have",
+          "group": "security",
+          "title": "Bandwidth limiting",
+          "seconds": 0
+        },
+        "static_files": {
+          "detail": "200 '<!doctype html><title>pxlab static</title><p>pxlab static fi' x-instance=None",
+          "status": "ok",
+          "group": "operations",
+          "title": "Static file serving",
+          "seconds": 0.0
+        },
+        "custom_error_page": {
+          "status": "unsupported",
+          "detail": "origin error bodies pass through; body_factory only styles ATS-generated errors",
+          "group": "operations",
+          "title": "Custom error page",
+          "seconds": 0
+        },
+        "hot_reload": {
+          "detail": "reload rc=0 ''; then 200",
+          "status": "ok",
+          "group": "operations",
+          "title": "Configuration reload without restart",
+          "seconds": 0.1
+        },
+        "access_log_json": {
+          "detail": "json keys: ['bytes', 'cache', 'duration_ms', 'host', 'method', 'proto', 'remote_addr', 'request_id', 'status', 'time', 'ua', 'upstream']",
+          "status": "ok",
+          "group": "operations",
+          "title": "Structured (JSON) access log",
+          "seconds": 1.59
+        },
+        "metrics_prometheus": {
+          "status": "unsupported",
+          "detail": "stats_over_http.so exposes JSON at /_stats; Prometheus needs an exporter",
+          "group": "operations",
+          "title": "Prometheus metrics",
+          "seconds": 0
+        },
+        "admin_api": {
+          "detail": "rc=0 'proxy.process.http.current_active_client_connections 0'",
+          "status": "ok",
+          "group": "operations",
+          "title": "Admin / stats / runtime API",
+          "seconds": 0.08
+        },
+        "tracing_otel": {
+          "status": "unsupported",
+          "detail": "no OpenTelemetry",
+          "group": "operations",
+          "title": "Distributed tracing (OpenTelemetry -> Jaeger)",
+          "seconds": 0
+        },
+        "docker_label_discovery": {
+          "status": "unsupported",
+          "detail": "no Docker provider",
+          "group": "operations",
+          "title": "Service discovery from Docker labels",
+          "seconds": 0
+        }
+      },
+      "summary": {
+        "ok": 39,
+        "fail": 3,
+        "error": 0,
+        "unsupported": 27
+      },
+      "_seconds": 14.7
+    },
+    "load": {
+      "seconds_default": 15,
+      "scenarios": {
+        "h1_keepalive": {
+          "tool": "oha",
+          "cmd": "oha --no-tui --output-format json -w -H Host: app.lab -z 15s -c 64 http://proxy:8080/small",
+          "exit_code": 0,
+          "wall_s": 16.2,
+          "stderr_tail": "",
+          "rps": 29838.1,
+          "p50": 2.07,
+          "p90": 2.511,
+          "p99": 3.633,
+          "p999": 5.258,
+          "max": 31.516,
+          "mean": 2.137,
+          "requests": 447723,
+          "errors": 0,
+          "non2xx": 0,
+          "status": "ok",
+          "bytes_per_s": 3491063,
+          "seconds": 15.01,
+          "error_samples": {},
+          "raw": {
+            "summary": {
+              "successRate": 1.0,
+              "total": 15.005054372,
+              "slowest": 0.031515678,
+              "fastest": 0.000230733,
+              "average": 0.0021371433569460155,
+              "requestsPerSec": 29838.145794091095,
+              "totalData": 52383591,
+              "sizePerRequest": 117,
+              "sizePerSec": 3491063.057908658
+            },
+            "latencyPercentiles": {
+              "p10": 0.001790841,
+              "p25": 0.001910832,
+              "p50": 0.002069623,
+              "p75": 0.002280585,
+              "p90": 0.0025112,
+              "p95": 0.002722122,
+              "p99": 0.003632759,
+              "p99.9": 0.00525754,
+              "p99.99": 0.009205117
+            }
+          },
+          "proxy": {
+            "cpu_cores_avg": 4.002,
+            "cpu_limit_cores": 4,
+            "cpu_pct_of_limit": 100.0,
+            "mem_end_mb": 209.7,
+            "mem_peak_mb": 213.7,
+            "per_container": {
+              "pxlab-ats": {
+                "cpu_cores_avg": 3.703,
+                "cpu_seconds": 60.08,
+                "cpuset": "0-3",
+                "mem_end_mb": 209.7,
+                "mem_start_mb": 87.4,
+                "mem_peak_mb": 213.7,
+                "window_s": 16.22
+              }
+            },
+            "cpu_us_per_request": 134.1,
+            "rps_per_core": 7457
+          },
+          "backends": {
+            "cpu_cores_avg": 4.939,
+            "cpu_limit_cores": 12
+          },
+          "loadgen": {
+            "cpu_cores_avg": 2.831,
+            "cpu_limit_cores": 8
+          },
+          "title": "HTTP/1.1 keep-alive, 64 connections, /small",
+          "metric": "rps",
+          "phase_seconds": 16.5
+        },
+        "h1_no_keepalive": {
+          "tool": "oha",
+          "cmd": "oha --no-tui --output-format json -w -H Host: app.lab -z 15s -c 64 --disable-keepalive http://proxy:8080/small",
+          "exit_code": 0,
+          "wall_s": 16.2,
+          "stderr_tail": "",
+          "rps": 4360.8,
+          "p50": 13.887,
+          "p90": 29.083,
+          "p99": 41.083,
+          "p999": 51.45,
+          "max": 65.01,
+          "mean": 14.652,
+          "requests": 65465,
+          "errors": 0,
+          "non2xx": 0,
+          "status": "ok",
+          "bytes_per_s": 510210,
+          "seconds": 15.01,
+          "error_samples": {},
+          "raw": {
+            "summary": {
+              "successRate": 1.0,
+              "total": 15.01225806,
+              "slowest": 0.065010304,
+              "fastest": 0.000445444,
+              "average": 0.014651959929397416,
+              "requestsPerSec": 4360.769694895585,
+              "totalData": 7659405,
+              "sizePerRequest": 117,
+              "sizePerSec": 510210.0543027835
+            },
+            "latencyPercentiles": {
+              "p10": 0.001357776,
+              "p25": 0.003460504,
+              "p50": 0.013887374,
+              "p75": 0.023164645,
+              "p90": 0.029083378,
+              "p95": 0.033111909,
+              "p99": 0.041083294,
+              "p99.9": 0.051449597,
+              "p99.99": 0.061002944
+            }
+          },
+          "proxy": {
+            "cpu_cores_avg": 1.136,
+            "cpu_limit_cores": 4,
+            "cpu_pct_of_limit": 28.4,
+            "mem_end_mb": 231.9,
+            "mem_peak_mb": 236.8,
+            "per_container": {
+              "pxlab-ats": {
+                "cpu_cores_avg": 1.052,
+                "cpu_seconds": 17.04,
+                "cpuset": "0-3",
+                "mem_end_mb": 231.9,
+                "mem_start_mb": 209.2,
+                "mem_peak_mb": 236.8,
+                "window_s": 16.21
+              }
+            },
+            "cpu_us_per_request": 260.5,
+            "rps_per_core": 3838
+          },
+          "backends": {
+            "cpu_cores_avg": 1.393,
+            "cpu_limit_cores": 12
+          },
+          "loadgen": {
+            "cpu_cores_avg": 7.412,
+            "cpu_limit_cores": 8
+          },
+          "title": "HTTP/1.1 new connection per request, 64 in flight",
+          "metric": "rps",
+          "phase_seconds": 16.5
+        },
+        "wrk_h1": {
+          "tool": "wrk",
+          "cmd": "wrk -t8 -c64 -d15s --latency -H Host: app.lab http://proxy:8080/small",
+          "exit_code": 0,
+          "wall_s": 16.2,
+          "stderr_tail": "",
+          "rps": 35471.63,
+          "p50": 1.75,
+          "p90": 2.09,
+          "p99": 3.18,
+          "max": 21.7,
+          "requests": 535625,
+          "errors": 0,
+          "non2xx": 0,
+          "status": "ok",
+          "bytes_per_s": 14507848,
+          "seconds": 15.1,
+          "raw": {
+            "text": "Running 15s test @ http://proxy:8080/small\n  8 threads and 64 connections\n  Thread Stats   Avg      Stdev     Max   +/- Stdev\n    Latency     1.80ms  380.19us  21.70ms   85.99%\n    Req/Sec     4.47k   216.18     6.78k    91.37%\n  Latency Distribution\n     50%    1.75ms\n     75%    1.89ms\n     90%    2.09ms\n     99%    3.18ms\n  535625 requests in 15.10s, 208.92MB read\nRequests/sec:  35471.63\nTransfer/sec:     13.84MB\n"
+          },
+          "mean": 1.8,
+          "proxy": {
+            "cpu_cores_avg": 4.006,
+            "cpu_limit_cores": 4,
+            "cpu_pct_of_limit": 100.2,
+            "mem_end_mb": 370.6,
+            "mem_peak_mb": 375.0,
+            "per_container": {
+              "pxlab-ats": {
+                "cpu_cores_avg": 3.741,
+                "cpu_seconds": 60.48,
+                "cpuset": "0-3",
+                "mem_end_mb": 370.6,
+                "mem_start_mb": 231.5,
+                "mem_peak_mb": 375.0,
+                "window_s": 16.17
+              }
+            },
+            "cpu_us_per_request": 112.9,
+            "rps_per_core": 8854
+          },
+          "backends": {
+            "cpu_cores_avg": 5.011,
+            "cpu_limit_cores": 12
+          },
+          "loadgen": {
+            "cpu_cores_avg": 2.208,
+            "cpu_limit_cores": 8
+          },
+          "title": "wrk reference: 8 threads, 64 connections, /small",
+          "metric": "rps",
+          "phase_seconds": 16.4
+        },
+        "tls_h1": {
+          "tool": "oha",
+          "cmd": "oha --no-tui --output-format json -w -H Host: app.lab -z 15s -c 64 --insecure https://proxy:8443/small",
+          "exit_code": 0,
+          "wall_s": 16.0,
+          "stderr_tail": "",
+          "rps": 22085.4,
+          "p50": 2.821,
+          "p90": 3.338,
+          "p99": 4.76,
+          "p999": 6.643,
+          "max": 79.587,
+          "mean": 2.889,
+          "requests": 331409,
+          "errors": 0,
+          "non2xx": 0,
+          "status": "ok",
+          "bytes_per_s": 2583992,
+          "seconds": 15.01,
+          "error_samples": {},
+          "raw": {
+            "summary": {
+              "successRate": 1.0,
+              "total": 15.005792762,
+              "slowest": 0.079587079,
+              "fastest": 0.000389155,
+              "average": 0.002889313368399767,
+              "requestsPerSec": 22085.404300614184,
+              "totalData": 38774853,
+              "sizePerRequest": 117,
+              "sizePerSec": 2583992.3031718596
+            },
+            "latencyPercentiles": {
+              "p10": 0.002395577,
+              "p25": 0.002624125,
+              "p50": 0.002821158,
+              "p75": 0.003039693,
+              "p90": 0.003337813,
+              "p95": 0.003632383,
+              "p99": 0.004760272,
+              "p99.9": 0.006642903,
+              "p99.99": 0.064134597
+            }
+          },
+          "proxy": {
+            "cpu_cores_avg": 3.989,
+            "cpu_limit_cores": 4,
+            "cpu_pct_of_limit": 99.7,
+            "mem_end_mb": 461.7,
+            "mem_peak_mb": 465.9,
+            "per_container": {
+              "pxlab-ats": {
+                "cpu_cores_avg": 3.733,
+                "cpu_seconds": 59.86,
+                "cpuset": "0-3",
+                "mem_end_mb": 461.7,
+                "mem_start_mb": 370.2,
+                "mem_peak_mb": 465.9,
+                "window_s": 16.04
+              }
+            },
+            "cpu_us_per_request": 180.6,
+            "rps_per_core": 5536
+          },
+          "backends": {
+            "cpu_cores_avg": 4.678,
+            "cpu_limit_cores": 12
+          },
+          "loadgen": {
+            "cpu_cores_avg": 3.067,
+            "cpu_limit_cores": 8
+          },
+          "title": "HTTPS HTTP/1.1 keep-alive, 64 connections",
+          "metric": "rps",
+          "phase_seconds": 16.3
+        },
+        "tls_h2": {
+          "tool": "oha",
+          "cmd": "oha --no-tui --output-format json -w --http2 -z 15s -c 16 -p 8 --insecure https://proxy:8443/small",
+          "exit_code": 0,
+          "wall_s": 16.2,
+          "stderr_tail": "",
+          "rps": 24880.4,
+          "p50": 4.975,
+          "p90": 6.438,
+          "p99": 8.619,
+          "p999": 12.457,
+          "max": 22.498,
+          "mean": 5.119,
+          "requests": 373315,
+          "errors": 0,
+          "non2xx": 0,
+          "status": "ok",
+          "bytes_per_s": 2911011,
+          "seconds": 15.0,
+          "error_samples": {},
+          "raw": {
+            "summary": {
+              "successRate": 1.0,
+              "total": 15.004358002,
+              "slowest": 0.02249763,
+              "fastest": 0.001628779,
+              "average": 0.005119024822107428,
+              "requestsPerSec": 24880.43806674295,
+              "totalData": 43677855,
+              "sizePerRequest": 117,
+              "sizePerSec": 2911011.2538089254
+            },
+            "latencyPercentiles": {
+              "p10": 0.003896795,
+              "p25": 0.004461171,
+              "p50": 0.004975089,
+              "p75": 0.00568681,
+              "p90": 0.006437853,
+              "p95": 0.00695887,
+              "p99": 0.008619199,
+              "p99.9": 0.012456799,
+              "p99.99": 0.015759771
+            }
+          },
+          "proxy": {
+            "cpu_cores_avg": 3.986,
+            "cpu_limit_cores": 4,
+            "cpu_pct_of_limit": 99.6,
+            "mem_end_mb": 567.8,
+            "mem_peak_mb": 569.0,
+            "per_container": {
+              "pxlab-ats": {
+                "cpu_cores_avg": 3.702,
+                "cpu_seconds": 59.79,
+                "cpuset": "0-3",
+                "mem_end_mb": 567.8,
+                "mem_start_mb": 461.3,
+                "mem_peak_mb": 569.0,
+                "window_s": 16.15
+              }
+            },
+            "cpu_us_per_request": 160.2,
+            "rps_per_core": 6242
+          },
+          "backends": {
+            "cpu_cores_avg": 4.495,
+            "cpu_limit_cores": 12
+          },
+          "loadgen": {
+            "cpu_cores_avg": 1.631,
+            "cpu_limit_cores": 8
+          },
+          "title": "HTTPS HTTP/2: 16 connections x 8 streams",
+          "metric": "rps",
+          "phase_seconds": 16.4
+        },
+        "h3": {
+          "status": "unsupported",
+          "detail": "the Ubuntu build has no QUIC (experimental in 9.x, needs quiche)",
+          "title": "HTTP/3 (QUIC): 16 connections x 8 streams",
+          "tool": "h3load"
+        },
+        "large_1mb": {
+          "tool": "oha",
+          "cmd": "oha --no-tui --output-format json -w -H Host: app.lab -z 15s -c 32 http://proxy:8080/bin/1048576",
+          "exit_code": 0,
+          "wall_s": 15.8,
+          "stderr_tail": "",
+          "rps": 3710.7,
+          "p50": 8.46,
+          "p90": 8.918,
+          "p99": 10.972,
+          "p999": 18.371,
+          "max": 25.55,
+          "mean": 8.611,
+          "requests": 55690,
+          "errors": 0,
+          "non2xx": 0,
+          "status": "ok",
+          "bytes_per_s": 3890926655,
+          "seconds": 15.01,
+          "error_samples": {},
+          "raw": {
+            "summary": {
+              "successRate": 1.0,
+              "total": 15.008043743,
+              "slowest": 0.02555007,
+              "fastest": 0.001976286,
+              "average": 0.008611103365451603,
+              "requestsPerSec": 3710.6768179546875,
+              "totalData": 58395197440,
+              "sizePerRequest": 1048576,
+              "sizePerSec": 3890926655.0636544
+            },
+            "latencyPercentiles": {
+              "p10": 0.008284846,
+              "p25": 0.008359605,
+              "p50": 0.00846031,
+              "p75": 0.008608171,
+              "p90": 0.008918381,
+              "p95": 0.009530348,
+              "p99": 0.010972456,
+              "p99.9": 0.018371019,
+              "p99.99": 0.02300053
+            }
+          },
+          "proxy": {
+            "cpu_cores_avg": 3.999,
+            "cpu_limit_cores": 4,
+            "cpu_pct_of_limit": 100.0,
+            "mem_end_mb": 586.6,
+            "mem_peak_mb": 613.4,
+            "per_container": {
+              "pxlab-ats": {
+                "cpu_cores_avg": 3.804,
+                "cpu_seconds": 60.03,
+                "cpuset": "0-3",
+                "mem_end_mb": 586.6,
+                "mem_start_mb": 567.7,
+                "mem_peak_mb": 613.4,
+                "window_s": 15.78
+              }
+            },
+            "cpu_us_per_request": 1077.7,
+            "rps_per_core": 928
+          },
+          "backends": {
+            "cpu_cores_avg": 4.095,
+            "cpu_limit_cores": 12
+          },
+          "loadgen": {
+            "cpu_cores_avg": 3.39,
+            "cpu_limit_cores": 8
+          },
+          "title": "1 MiB responses, 32 connections (throughput MB/s)",
+          "metric": "bytes_per_s",
+          "phase_seconds": 16.0
+        },
+        "gzip_64k": {
+          "tool": "oha",
+          "cmd": "oha --no-tui --output-format json -w -H Host: app.lab -z 15s -c 64 -H Accept-Encoding: gzip http://proxy:8080/compressible",
+          "exit_code": 0,
+          "wall_s": 16.3,
+          "stderr_tail": "",
+          "rps": 6212.7,
+          "p50": 10.036,
+          "p90": 11.282,
+          "p99": 14.004,
+          "p999": 22.51,
+          "max": 46.224,
+          "mean": 10.279,
+          "requests": 93272,
+          "errors": 0,
+          "non2xx": 0,
+          "status": "ok",
+          "bytes_per_s": 2441585,
+          "seconds": 15.01,
+          "error_samples": {},
+          "raw": {
+            "summary": {
+              "successRate": 1.0,
+              "total": 15.013029132,
+              "slowest": 0.046224161,
+              "fastest": 0.00100631,
+              "average": 0.010278559648018786,
+              "requestsPerSec": 6212.736895393909,
+              "totalData": 36655589,
+              "sizePerRequest": 392,
+              "sizePerSec": 2441585.150985238
+            },
+            "latencyPercentiles": {
+              "p10": 0.00945287,
+              "p25": 0.009697425,
+              "p50": 0.010035781,
+              "p75": 0.010555695,
+              "p90": 0.011282189,
+              "p95": 0.011908123,
+              "p99": 0.014004275,
+              "p99.9": 0.022509807,
+              "p99.99": 0.033234769
+            }
+          },
+          "proxy": {
+            "cpu_cores_avg": 4.001,
+            "cpu_limit_cores": 4,
+            "cpu_pct_of_limit": 100.0,
+            "mem_end_mb": 614.4,
+            "mem_peak_mb": 634.0,
+            "per_container": {
+              "pxlab-ats": {
+                "cpu_cores_avg": 3.684,
+                "cpu_seconds": 60.05,
+                "cpuset": "0-3",
+                "mem_end_mb": 614.4,
+                "mem_start_mb": 586.8,
+                "mem_peak_mb": 634.0,
+                "window_s": 16.3
+              }
+            },
+            "cpu_us_per_request": 643.9,
+            "rps_per_core": 1553
+          },
+          "backends": {
+            "cpu_cores_avg": 4.155,
+            "cpu_limit_cores": 12
+          },
+          "loadgen": {
+            "cpu_cores_avg": 1.207,
+            "cpu_limit_cores": 8
+          },
+          "title": "64 KiB text compressed by the proxy (gzip), 64 connections",
+          "metric": "rps",
+          "phase_seconds": 16.5
+        },
+        "cache_hit": {
+          "tool": "oha",
+          "cmd": "oha --no-tui --output-format json -w -H Host: app.lab -z 15s -c 64 http://proxy:8080/cacheable/load-70c1c",
+          "exit_code": 0,
+          "wall_s": 16.3,
+          "stderr_tail": "",
+          "rps": 28093.1,
+          "p50": 2.199,
+          "p90": 2.661,
+          "p99": 3.851,
+          "p999": 6.093,
+          "max": 20.272,
+          "mean": 2.27,
+          "requests": 421563,
+          "errors": 0,
+          "non2xx": 0,
+          "status": "ok",
+          "bytes_per_s": 2590445,
+          "seconds": 15.01,
+          "error_samples": {},
+          "raw": {
+            "summary": {
+              "successRate": 1.0,
+              "total": 15.005936752,
+              "slowest": 0.020272123,
+              "fastest": 0.000299193,
+              "average": 0.0022696044948346712,
+              "requestsPerSec": 28093.081222924244,
+              "totalData": 38872049,
+              "sizePerRequest": 92,
+              "sizePerSec": 2590444.6781584034
+            },
+            "latencyPercentiles": {
+              "p10": 0.001901314,
+              "p25": 0.00202488,
+              "p50": 0.002198788,
+              "p75": 0.002422828,
+              "p90": 0.002660504,
+              "p95": 0.002875097,
+              "p99": 0.003850584,
+              "p99.9": 0.0060927,
+              "p99.99": 0.010083135
+            }
+          },
+          "proxy": {
+            "cpu_cores_avg": 3.995,
+            "cpu_limit_cores": 4,
+            "cpu_pct_of_limit": 99.9,
+            "mem_end_mb": 733.1,
+            "mem_peak_mb": 733.9,
+            "per_container": {
+              "pxlab-ats": {
+                "cpu_cores_avg": 3.688,
+                "cpu_seconds": 59.96,
+                "cpuset": "0-3",
+                "mem_end_mb": 733.1,
+                "mem_start_mb": 613.9,
+                "mem_peak_mb": 733.9,
+                "window_s": 16.26
+              }
+            },
+            "cpu_us_per_request": 142.2,
+            "rps_per_core": 7032
+          },
+          "backends": {
+            "cpu_cores_avg": 5.02,
+            "cpu_limit_cores": 12
+          },
+          "loadgen": {
+            "cpu_cores_avg": 2.726,
+            "cpu_limit_cores": 8
+          },
+          "title": "served from the proxy cache, 64 connections",
+          "metric": "rps",
+          "phase_seconds": 16.5
+        },
+        "ws_echo": {
+          "tool": "k6",
+          "cmd": "sh -c k6 run --quiet --vus 64 --duration 15s -e URL=ws://proxy:8080/ws -e HOST=app.lab -e MSGS=500 --summary-trend-stats 'avg,med,p(90),p(99),max' --summary-export=/tmp/k6.json /k6/ws.js >/dev/null 2>&1; echo __K6SUMMARY__; cat /tmp/k6.json",
+          "exit_code": 0,
+          "wall_s": 16.1,
+          "stderr_tail": "",
+          "rps": 95219.4,
+          "p50": 1,
+          "p90": 1,
+          "p99": 3,
+          "max": 16,
+          "mean": 0.6525800207397165,
+          "requests": 1446500,
+          "errors": 0,
+          "non2xx": 0,
+          "status": "ok",
+          "bytes_per_s": 0,
+          "seconds": 0,
+          "raw": {
+            "ws_connecting": {
+              "avg": 1.8019169260283392,
+              "med": 1.322605,
+              "p(90)": 2.955926200000004,
+              "p(99)": 7.70650568,
+              "max": 30.327616
+            },
+            "ws_session_duration": {
+              "avg": 334.41901516038695,
+              "med": 328.246663,
+              "p(90)": 380.3134082,
+              "p(99)": 435.52223848,
+              "max": 472.602469
+            }
+          },
+          "proxy": {
+            "cpu_cores_avg": 3.652,
+            "cpu_limit_cores": 4,
+            "cpu_pct_of_limit": 91.3,
+            "mem_end_mb": 735.8,
+            "mem_peak_mb": 743.7,
+            "per_container": {
+              "pxlab-ats": {
+                "cpu_cores_avg": 3.396,
+                "cpu_seconds": 54.79,
+                "cpuset": "0-3",
+                "mem_end_mb": 735.8,
+                "mem_start_mb": 733.3,
+                "mem_peak_mb": 743.7,
+                "window_s": 16.13
+              }
+            },
+            "cpu_us_per_request": 38.4,
+            "rps_per_core": 26074
+          },
+          "backends": {
+            "cpu_cores_avg": 5.126,
+            "cpu_limit_cores": 12
+          },
+          "loadgen": {
+            "cpu_cores_avg": 7.156,
+            "cpu_limit_cores": 8
+          },
+          "title": "WebSocket echo: 64 VUs x 500 messages (k6)",
+          "metric": "rps",
+          "phase_seconds": 16.4
+        },
+        "grpc_health": {
+          "status": "unsupported",
+          "detail": "no HTTP/2 to origins, so no gRPC proxying",
+          "title": "gRPC Health/Check over TLS: 16 connections x 8 streams (fortio)",
+          "tool": "fortio"
+        },
+        "open_loop_5k": {
+          "tool": "fortio",
+          "cmd": "fortio load -qps 5000 -c 64 -t 15s -nocatchup -uniform -H Host: app.lab -json - -p 50,90,99,99.9 http://proxy:8080/small",
+          "exit_code": 0,
+          "wall_s": 15.7,
+          "stderr_tail": "orm: true, Jitter: false, Catchup allowed: false\nIP addresses distribution:\n10.77.0.2:8080: 64\nCode 200 : 74944 (100.0 %)\nResponse Header Sizes : count 74944 avg 292 +/- 0 min 292 max 292 sum 21883648\nResponse Body/Total Sizes : count 74944 avg 409 +/- 0 min 409 max 409 sum 30652096\nAll done 74944 calls (plus 64 warmup) 0.744 ms avg, 4995.6 qps\nSuccessfully wrote 4412 bytes of Json data to stdout\n",
+          "rps": 4995.6,
+          "p50": 0.651,
+          "p90": 0.988,
+          "p99": 1.899,
+          "p999": 2.369,
+          "max": 4.307,
+          "mean": 0.744,
+          "requests": 74944,
+          "errors": 0,
+          "non2xx": 0,
+          "status": "ok",
+          "bytes_per_s": 2043218,
+          "seconds": 15.0,
+          "requested_qps": "5000",
+          "raw": {
+            "RetCodes": {
+              "200": 74944
+            },
+            "Percentiles": {
+              "p50": 0.651,
+              "p90": 0.988,
+              "p99": 1.899,
+              "p999": 2.369
+            }
+          },
+          "proxy": {
+            "cpu_cores_avg": 1.917,
+            "cpu_limit_cores": 4,
+            "cpu_pct_of_limit": 47.9,
+            "mem_end_mb": 756.8,
+            "mem_peak_mb": 760.2,
+            "per_container": {
+              "pxlab-ats": {
+                "cpu_cores_avg": 1.832,
+                "cpu_seconds": 28.76,
+                "cpuset": "0-3",
+                "mem_end_mb": 756.8,
+                "mem_start_mb": 736.2,
+                "mem_peak_mb": 760.2,
+                "window_s": 15.7
+              }
+            },
+            "cpu_us_per_request": 383.8,
+            "rps_per_core": 2605
+          },
+          "backends": {
+            "cpu_cores_avg": 2.021,
+            "cpu_limit_cores": 12
+          },
+          "loadgen": {
+            "cpu_cores_avg": 0.71,
+            "cpu_limit_cores": 8
+          },
+          "title": "open loop at exactly 5000 rps (64 conns): latency without coordinated omission",
+          "metric": "p99",
+          "phase_seconds": 15.9
+        },
+        "ratelimit_accuracy": {
+          "status": "unsupported",
+          "detail": "rate_limit.so limits concurrency per remap, not requests per second per client",
+          "title": "/limited (10 r/s) hammered at 200 rps for 10 s: how many get through",
+          "tool": "oha"
+        },
+        "c10k": {
+          "tool": "oha",
+          "cmd": "oha --no-tui --output-format json -w -H Host: app.lab -z 20s -c 10000 http://proxy:8080/delay/500",
+          "exit_code": 0,
+          "wall_s": 21.9,
+          "stderr_tail": "",
+          "rps": 15117.3,
+          "p50": 573.281,
+          "p90": 818.098,
+          "p99": 1645.672,
+          "p999": 1780.635,
+          "max": 1931.91,
+          "mean": 647.024,
+          "requests": 310699,
+          "errors": 0,
+          "non2xx": 0,
+          "status": "ok",
+          "bytes_per_s": 6483533,
+          "seconds": 20.55,
+          "error_samples": {},
+          "raw": {
+            "summary": {
+              "successRate": 1.0,
+              "total": 20.552519005,
+              "slowest": 1.9319100489999999,
+              "fastest": 0.50277145,
+              "average": 0.6470240241169477,
+              "requestsPerSec": 15117.319678644422,
+              "totalData": 133252925,
+              "sizePerRequest": 428,
+              "sizePerSec": 6483532.503610984
+            },
+            "latencyPercentiles": {
+              "p10": 0.54021817,
+              "p25": 0.552977479,
+              "p50": 0.573280929,
+              "p75": 0.656209126,
+              "p90": 0.818098406,
+              "p95": 0.940084036,
+              "p99": 1.645671662,
+              "p99.9": 1.780634859,
+              "p99.99": 1.864318825
+            }
+          },
+          "proxy": {
+            "cpu_cores_avg": 3.488,
+            "cpu_limit_cores": 4,
+            "cpu_pct_of_limit": 87.2,
+            "mem_end_mb": 3407.2,
+            "mem_peak_mb": 3446.3,
+            "per_container": {
+              "pxlab-ats": {
+                "cpu_cores_avg": 3.276,
+                "cpu_seconds": 71.7,
+                "cpuset": "0-3",
+                "mem_end_mb": 3407.2,
+                "mem_start_mb": 757.5,
+                "mem_peak_mb": 3446.3,
+                "window_s": 21.88
+              }
+            },
+            "cpu_us_per_request": 230.7,
+            "rps_per_core": 4334
+          },
+          "backends": {
+            "cpu_cores_avg": 3.845,
+            "cpu_limit_cores": 12
+          },
+          "loadgen": {
+            "cpu_cores_avg": 1.777,
+            "cpu_limit_cores": 8
+          },
+          "title": "10 000 concurrent connections holding /delay/500 for 20 s (memory per connection)",
+          "metric": "rps",
+          "phase_seconds": 22.1
+        }
+      },
+      "_seconds": 211.4
+    },
+    "chaos": {
+      "failover": {
+        "status": "ok",
+        "stop_at_s": 6.0,
+        "start_at_s": 14.4,
+        "load": {
+          "rps": 997.7,
+          "requests": 23978,
+          "errors": 0,
+          "non2xx": 0,
+          "status": {
+            "200": 23978
+          },
+          "p50": 0.646,
+          "p99": 1.815,
+          "p999": 23.587,
+          "max": 83.789
+        },
+        "timeline": {
+          "requests": 561,
+          "failed": 0,
+          "codes": {
+            "200": 561
+          },
+          "instances": {
+            "app1": 172,
+            "app2": 44,
+            "app3": 345
+          },
+          "first_fail_s": null,
+          "last_fail_s": null,
+          "fail_window_s": 0.0,
+          "app2_last_seen_after_stop_s": null
+        },
+        "app2_back_after_s": null,
+        "detail": "load errors=0/23978 ({'200': 23978}); timeline failed=0/561 window=0.0s (first=Nones after stop@6.0s); app2 back after Nones"
+      },
+      "reload": {
+        "status": "ok",
+        "reload_rc": 0,
+        "reload_seconds": 0.13,
+        "reload_output": "",
+        "load": {
+          "rps": 29300.3,
+          "requests": 440191,
+          "errors": 0,
+          "non2xx": 0,
+          "status": {
+            "200": 440191
+          },
+          "p50": 1.909,
+          "p99": 17.481,
+          "max": 38.889,
+          "error_samples": {}
+        },
+        "timeline": {
+          "requests": 332,
+          "failed": 0,
+          "codes": {
+            "200": 332
+          },
+          "instances": {
+            "app3": 229,
+            "app1": 103
+          },
+          "first_fail_s": null,
+          "last_fail_s": null,
+          "fail_window_s": 0.0
+        },
+        "detail": "reload rc=0 in 0.13s; load errors=0 non2xx=0 of 440191; timeline failed=0/332"
+      },
+      "_seconds": 87.1
+    }
+  },
+  "finished": "2026-09-13T20:53:26+00:00"
+}

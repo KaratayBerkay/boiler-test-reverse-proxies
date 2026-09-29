@@ -1,0 +1,553 @@
+{
+  "stack": "kong",
+  "display": "Kong Gateway 3.9",
+  "image": "kong:3.9",
+  "family": "api-gateway",
+  "category": "API gateway on OpenResty (Lua plugins): routes/services/upstreams/consumers/plugins, DB-less declarative config",
+  "run_id": "20260913-204924-a6fc3d",
+  "started": "2026-09-13T17:49:24+00:00",
+  "notes": "Kong Gateway OSS 3.9 in DB-less mode with the expressions router. Upstreams demonstrate round-robin / weighted / least-connections / consistent-hashing (header, cookie stickiness), active + passive health checks and retries; bundled plugins cover rate limiting, IP restriction, basic auth, JWT, CORS, request/response transformers, proxy-cache (+ admin purge), request size limiting, correlation-id, prometheus, opentelemetry and acme (Pebble); pre/post-function serverless plugins do redirects, 405, fault injection, static files and the custom error page. Stream routes give TCP, UDP and TLS passthrough.",
+  "docs": [
+    "https://hub.docker.com/_/kong",
+    "https://docs.konghq.com/gateway/latest/production/deployment-topologies/db-less-and-declarative-config/",
+    "https://docs.konghq.com/gateway/latest/key-concepts/routes/expressions/",
+    "https://docs.konghq.com/hub/",
+    "https://docs.konghq.com/gateway/latest/reference/configuration/"
+  ],
+  "image_size": "528 MB",
+  "startup_s": null,
+  "version": "3.9.3",
+  "containers": [
+    "pxlab-kong"
+  ],
+  "unsupported": {
+    "lb_mirror": "no traffic mirroring in Kong OSS",
+    "h2_upstream": "HTTP/2 to upstreams only for gRPC services (protocol grpc/grpcs)",
+    "proxy_protocol_upstream": "Kong cannot send PROXY protocol to upstreams",
+    "mtls_client_cert": "mtls-auth is a Kong Enterprise plugin; nginx-level ssl_verify_client would apply to every TLS listener",
+    "http3": "no HTTP/3 in Kong Gateway 3.9 OSS",
+    "cache_stale_on_error": "proxy-cache has no stale-if-error mode",
+    "compress_brotli": "gzip only (nginx gzip injected through KONG_NGINX_PROXY_GZIP)",
+    "compress_zstd": "gzip only",
+    "connection_limit": "no per-client concurrency limit in OSS (rate-limiting is per request)",
+    "forward_auth": "no forward-auth plugin in Kong OSS (openid-connect is Enterprise; write a pre-function with lua-resty-http)",
+    "bandwidth_limit": "no bandwidth limiting (response-ratelimiting counts requests)",
+    "docker_label_discovery": "no Docker provider (Kong Ingress Controller does this on Kubernetes)"
+  },
+  "phases": {
+    "capabilities": {
+      "ready_s": 0.1,
+      "probes": {
+        "route_host": {
+          "detail": "a.lab -> app2 (X-Route=a), b.lab -> b1",
+          "status": "ok",
+          "group": "routing",
+          "title": "Host-based routing",
+          "seconds": 0.06
+        },
+        "route_path_prefix": {
+          "detail": "upstream path=/hello query=x=1 X-Route=api",
+          "status": "ok",
+          "group": "routing",
+          "title": "Path prefix route + strip prefix",
+          "seconds": 0.01
+        },
+        "route_path_regex": {
+          "detail": "path=/things X-Route=versioned",
+          "status": "fail",
+          "group": "routing",
+          "title": "Regex path route",
+          "seconds": 0.0
+        },
+        "route_rewrite": {
+          "detail": "upstream path=/new/thing X-Route=rewritten",
+          "status": "ok",
+          "group": "routing",
+          "title": "URL rewrite (regex capture)",
+          "seconds": 0.0
+        },
+        "route_redirect": {
+          "detail": "301 Location=/landing",
+          "status": "ok",
+          "group": "routing",
+          "title": "Redirect issued by the proxy",
+          "seconds": 0.0
+        },
+        "route_header": {
+          "detail": "instance=canary",
+          "status": "ok",
+          "group": "routing",
+          "title": "Header-based routing",
+          "seconds": 0.0
+        },
+        "route_query": {
+          "detail": "instance=canary",
+          "status": "ok",
+          "group": "routing",
+          "title": "Query-parameter routing",
+          "seconds": 0.01
+        },
+        "route_method": {
+          "detail": "DELETE -> 405 (x-instance=None)",
+          "status": "ok",
+          "group": "routing",
+          "title": "Method-based rule",
+          "seconds": 0.0
+        },
+        "redirect_https": {
+          "detail": "301 Location=https://redirect.lab/x?q=1",
+          "status": "ok",
+          "group": "routing",
+          "title": "HTTP -> HTTPS redirect",
+          "seconds": 0.01
+        },
+        "lb_round_robin": {
+          "detail": {
+            "app1": 10,
+            "app3": 10,
+            "app2": 10
+          },
+          "status": "ok",
+          "group": "load-balancing",
+          "title": "Round-robin over 3 backends",
+          "seconds": 0.12
+        },
+        "lb_weighted": {
+          "detail": "app1 share=0.75 {'app2': 25, 'app1': 75}",
+          "share": 0.75,
+          "status": "ok",
+          "group": "load-balancing",
+          "title": "Weighted round-robin (3:1)",
+          "seconds": 0.39
+        },
+        "lb_least_conn": {
+          "detail": "slow share=0.04 {'app1': 144, 'app2': 145, 'slow': 11}",
+          "share": 0.03666666666666667,
+          "status": "ok",
+          "group": "load-balancing",
+          "title": "Least-connections",
+          "seconds": 0.7
+        },
+        "lb_hash_header": {
+          "detail": "u1 -> {'app1': 20}; 10 users -> {'app1': 30}",
+          "status": "fail",
+          "group": "load-balancing",
+          "title": "Consistent hashing on a header",
+          "seconds": 0.11
+        },
+        "lb_sticky_cookie": {
+          "detail": "cookie='lab_sticky=d47acb82-098a-4afc-bde3-c0cee165a149; Path=/; Sam' first=app2 then={'app2': 12}",
+          "status": "ok",
+          "group": "load-balancing",
+          "title": "Cookie stickiness",
+          "seconds": 0.04
+        },
+        "lb_retry_dead_member": {
+          "detail": "codes={200: 30} max_ms=7",
+          "max_ms": 7.0,
+          "status": "ok",
+          "group": "load-balancing",
+          "title": "Retry on connect failure",
+          "seconds": 0.13
+        },
+        "lb_outlier_ejection": {
+          "detail": "first20={200: 17, 500: 3} last20={200: 40} flaky hits in last 20=0",
+          "errors_first20": 3,
+          "errors_last20": -20,
+          "flaky_hits_last20": 0,
+          "status": "ok",
+          "group": "load-balancing",
+          "title": "Passive health / outlier ejection",
+          "seconds": 1.72
+        },
+        "lb_active_health": {
+          "detail": "ejected after 2.1s; while unhealthy: {'app1': 15, 'app2': 15} app3 hits=0; re-admitted after 1.6s",
+          "eject_s": 2.1,
+          "readmit_s": 1.6,
+          "status": "ok",
+          "group": "load-balancing",
+          "title": "Active health checks",
+          "seconds": 4.03
+        },
+        "lb_canary_split": {
+          "detail": "canary share=0.100 {'app1': 60, 'app3': 60, 'canary': 20, 'app2': 60}",
+          "share": 0.1,
+          "status": "ok",
+          "group": "load-balancing",
+          "title": "Weighted traffic split (canary)",
+          "seconds": 0.64
+        },
+        "lb_mirror": {
+          "status": "unsupported",
+          "detail": "no traffic mirroring in Kong OSS",
+          "group": "load-balancing",
+          "title": "Request mirroring / shadowing",
+          "seconds": 0
+        },
+        "lb_upstream_keepalive": {
+          "detail": "new upstream connections for 60 requests: {'app1': 2, 'app2': 2, 'app3': 2}",
+          "upstream_connections": 6,
+          "status": "ok",
+          "group": "load-balancing",
+          "title": "Upstream connection pooling",
+          "seconds": 0.39
+        },
+        "http2_tls": {
+          "detail": "HTTP/2 200 upstream proto=HTTP/1.1",
+          "status": "ok",
+          "group": "protocols",
+          "title": "HTTP/2 (TLS, ALPN)",
+          "seconds": 0.02
+        },
+        "h2c_frontend": {
+          "detail": "status=200 body=b'{\\n \"instance\": \"app1\",\\n \"pool\": \"app\",\\n '",
+          "status": "ok",
+          "group": "protocols",
+          "title": "HTTP/2 cleartext (prior knowledge) on :8080",
+          "seconds": 0.0
+        },
+        "http3": {
+          "status": "unsupported",
+          "detail": "no HTTP/3 in Kong Gateway 3.9 OSS",
+          "group": "protocols",
+          "title": "HTTP/3 (QUIC)",
+          "seconds": 0
+        },
+        "websocket": {
+          "detail": "text echo='hello' binary 4096=4096 instance=app2",
+          "status": "ok",
+          "group": "protocols",
+          "title": "WebSocket proxying",
+          "seconds": 0.02
+        },
+        "sse_streaming": {
+          "detail": "events=5 first=0.0s total=1.21s",
+          "status": "ok",
+          "group": "protocols",
+          "title": "Server-sent events (no response buffering)",
+          "seconds": 1.21
+        },
+        "grpc": {
+          "detail": "tls:8443: SERVING",
+          "via": "tls:8443",
+          "status": "ok",
+          "group": "protocols",
+          "title": "gRPC proxying (h2 -> upstream h2c :9090)",
+          "seconds": 0.1
+        },
+        "h2_upstream": {
+          "status": "unsupported",
+          "detail": "HTTP/2 to upstreams only for gRPC services (protocol grpc/grpcs)",
+          "group": "protocols",
+          "title": "HTTP/2 to the upstream (h2c)",
+          "seconds": 0
+        },
+        "tls_upstream": {
+          "detail": "listener=tls tls={'version': 'TLS1.3', 'sni': 'app1', 'alpn': ''}",
+          "status": "ok",
+          "group": "protocols",
+          "title": "TLS re-encryption to the upstream (verified)",
+          "seconds": 0.01
+        },
+        "proxy_protocol_upstream": {
+          "status": "unsupported",
+          "detail": "Kong cannot send PROXY protocol to upstreams",
+          "group": "protocols",
+          "title": "PROXY protocol v2 to the upstream",
+          "seconds": 0
+        },
+        "proxy_protocol_accept": {
+          "detail": "X-Forwarded-For=203.0.113.9 remote_addr=10.77.0.2:34222",
+          "status": "ok",
+          "group": "protocols",
+          "title": "Accept PROXY protocol from clients (:8082)",
+          "seconds": 0.0
+        },
+        "tcp_l4": {
+          "detail": "instance=app1 remote_addr=10.77.0.2:51236 headers=['Connection']",
+          "status": "ok",
+          "group": "protocols",
+          "title": "TCP (L4) proxying",
+          "seconds": 0.0
+        },
+        "udp_l4": {
+          "detail": "echo:app1:ping-a6e224",
+          "status": "ok",
+          "group": "protocols",
+          "title": "UDP proxying",
+          "seconds": 0.0
+        },
+        "tls_passthrough_sni": {
+          "detail": "SSLError: [SSL: WRONG_VERSION_NUMBER] wrong version number (_ssl.c:1000)",
+          "status": "error",
+          "group": "protocols",
+          "title": "TLS passthrough by SNI (L4)",
+          "seconds": 0.0
+        },
+        "tls_termination": {
+          "detail": "200 cert=CN = app.lab, O = pxlab TLSv1.3 X-Forwarded-Proto=https",
+          "status": "ok",
+          "group": "tls",
+          "title": "TLS termination",
+          "seconds": 0.05
+        },
+        "tls13": {
+          "detail": "TLSv1.3 TLS_AES_256_GCM_SHA384",
+          "status": "ok",
+          "group": "tls",
+          "title": "TLS 1.3 negotiated",
+          "seconds": 0.01
+        },
+        "tls_legacy_refused": {
+          "detail": "80F7AA7EF5750000:error:0A00042E:SSL routines:ssl3_read_bytes:tlsv1 alert protocol version:../ssl/record/rec_layer_s3.c:918:SSL alert number 70\nProtocol: TLSv1.1\n    Protocol  : TLSv1.1",
+          "status": "ok",
+          "group": "tls",
+          "title": "TLS 1.0/1.1 refused",
+          "seconds": 0.52
+        },
+        "mtls_client_cert": {
+          "status": "unsupported",
+          "detail": "mtls-auth is a Kong Enterprise plugin; nginx-level ssl_verify_client would apply to every TLS listener",
+          "group": "tls",
+          "title": "Mutual TLS (client certificate required)",
+          "seconds": 0
+        },
+        "sni_multi_cert": {
+          "detail": "app.lab -> CN = app.lab, O = pxlab; b.lab -> CN = b.lab, O = pxlab",
+          "status": "ok",
+          "group": "tls",
+          "title": "Multiple certificates selected by SNI",
+          "seconds": 0.08
+        },
+        "acme_auto_cert": {
+          "detail": "subject=CN = app.lab, O = pxlab issuer=CN = pxlab CA, O = pxlab sans=DNS:localhost, DNS:proxy, IP Address:127.0.0.1, DNS:app.lab, DNS:a.lab, DNS:weighted.lab, DNS:leastconn.lab, DNS:hash.lab, DNS:sticky.lab, DNS:retry.lab, DNS:cb.lab, DNS:health.lab, DNS:canary.lab, DNS:mirror.lab, DNS:pp.lab, DNS:h2.lab, DNS:tls.lab, DNS:auth.lab, DNS:jwt.lab, DNS:mtls.lab, DNS:redirect.lab, DNS:whoami.lab",
+          "status": "fail",
+          "group": "tls",
+          "title": "Automatic certificate via ACME (Pebble)",
+          "seconds": 91.31
+        },
+        "cache_hit": {
+          "detail": "origin app3#None -> app2#None; X-Cache-Status: Bypass -> Bypass age=None",
+          "status": "fail",
+          "group": "caching",
+          "title": "Response caching",
+          "seconds": 0.01
+        },
+        "cache_purge": {
+          "detail": "purge -> 204; origin app3#None -> app2#None",
+          "status": "ok",
+          "group": "caching",
+          "title": "Cache purge",
+          "seconds": 0.04
+        },
+        "cache_stale_on_error": {
+          "status": "unsupported",
+          "detail": "proxy-cache has no stale-if-error mode",
+          "group": "caching",
+          "title": "Serve stale on upstream error",
+          "seconds": 0
+        },
+        "compress_gzip": {
+          "detail": "Content-Encoding=gzip 611 bytes (65536 uncompressed)",
+          "bytes": 611,
+          "status": "ok",
+          "group": "compression",
+          "title": "gzip compression",
+          "seconds": 0.0
+        },
+        "compress_brotli": {
+          "status": "unsupported",
+          "detail": "gzip only (nginx gzip injected through KONG_NGINX_PROXY_GZIP)",
+          "group": "compression",
+          "title": "Brotli compression",
+          "seconds": 0
+        },
+        "compress_zstd": {
+          "status": "unsupported",
+          "detail": "gzip only",
+          "group": "compression",
+          "title": "Zstandard compression",
+          "seconds": 0
+        },
+        "xff_headers": {
+          "detail": "XFF=10.77.0.1 Proto=http Host=app.lab X-Real-IP=10.77.0.1",
+          "status": "ok",
+          "group": "headers",
+          "title": "X-Forwarded-* headers",
+          "seconds": 0.0
+        },
+        "forwarded_rfc7239": {
+          "detail": "Forwarded='for=10.77.0.1;proto=http;host=app.lab'",
+          "status": "ok",
+          "group": "headers",
+          "title": "RFC 7239 Forwarded header",
+          "seconds": 0.0
+        },
+        "header_add_remove": {
+          "detail": "X-Lab-Proxy=kong X-Powered-By=removed Server=lab-backend/1.0",
+          "status": "ok",
+          "group": "headers",
+          "title": "Header manipulation",
+          "seconds": 0.0
+        },
+        "request_id": {
+          "detail": "'a954adb5-58cd-4d65-ae64-6345c2375315' / 'c1d4acb6-fb42-4396-94ba-552100af8e7b'",
+          "status": "ok",
+          "group": "headers",
+          "title": "Request ID generation",
+          "seconds": 0.0
+        },
+        "rate_limit": {
+          "detail": "codes={200: 10, 429: 30}",
+          "rejected": 30,
+          "status": "ok",
+          "group": "security",
+          "title": "Request rate limiting",
+          "seconds": 0.1
+        },
+        "connection_limit": {
+          "status": "unsupported",
+          "detail": "no per-client concurrency limit in OSS (rate-limiting is per request)",
+          "group": "security",
+          "title": "Concurrent connection limit",
+          "seconds": 0
+        },
+        "ip_allow_deny": {
+          "detail": "/allowed=200 /denied=403",
+          "status": "ok",
+          "group": "security",
+          "title": "IP allow / deny lists",
+          "seconds": 0.01
+        },
+        "basic_auth": {
+          "detail": "no creds=401 (Basic realm=\"pxlab\") creds=200",
+          "status": "ok",
+          "group": "security",
+          "title": "HTTP basic authentication",
+          "seconds": 0.01
+        },
+        "jwt_auth": {
+          "detail": "none=401 valid=200 bad-sig=401",
+          "status": "ok",
+          "group": "security",
+          "title": "JWT validation (HS256)",
+          "seconds": 0.02
+        },
+        "forward_auth": {
+          "status": "unsupported",
+          "detail": "no forward-auth plugin in Kong OSS (openid-connect is Enterprise; write a pre-function with lua-resty-http)",
+          "group": "security",
+          "title": "External authorization (forward auth / auth_request / ext_authz)",
+          "seconds": 0
+        },
+        "cors": {
+          "detail": "200 ACAO=* methods=GET,POST,PUT,DELETE,OPTIONS",
+          "status": "ok",
+          "group": "security",
+          "title": "CORS preflight answered by the proxy",
+          "seconds": 0.0
+        },
+        "security_headers": {
+          "detail": "{'strict-transport-security': 'max-age=31536000; includeSubDomains', 'x-content-type-options': 'nosniff', 'x-frame-options': 'DENY', 'referrer-policy': 'strict-origin-when-cross-origin'}",
+          "status": "ok",
+          "group": "security",
+          "title": "Security response headers",
+          "seconds": 0.0
+        },
+        "body_size_limit": {
+          "detail": "2MiB=413 100KiB=200",
+          "status": "ok",
+          "group": "security",
+          "title": "Request body size limit",
+          "seconds": 0.01
+        },
+        "upstream_timeout": {
+          "detail": "504 after 2.01s",
+          "seconds": 2.01,
+          "status": "ok",
+          "group": "security",
+          "title": "Upstream read timeout"
+        },
+        "fault_injection": {
+          "detail": "503 share=0.19 codes={200: 81, 503: 19}",
+          "share": 0.19,
+          "status": "ok",
+          "group": "security",
+          "title": "Fault injection",
+          "seconds": 0.3
+        },
+        "bandwidth_limit": {
+          "status": "unsupported",
+          "detail": "no bandwidth limiting (response-ratelimiting counts requests)",
+          "group": "security",
+          "title": "Bandwidth limiting",
+          "seconds": 0
+        },
+        "static_files": {
+          "detail": "500 '{\\n  \"message\":\"An unexpected error occurred\",\\n  \"request_id\"' x-instance=None",
+          "status": "fail",
+          "group": "operations",
+          "title": "Static file serving",
+          "seconds": 0.0
+        },
+        "custom_error_page": {
+          "detail": "RemoteProtocolError: Server disconnected without sending a response.",
+          "status": "error",
+          "group": "operations",
+          "title": "Custom error page",
+          "seconds": 0.01
+        },
+        "hot_reload": {
+          "detail": "reload rc=0 'Kong reloaded'; then 200",
+          "status": "ok",
+          "group": "operations",
+          "title": "Configuration reload without restart",
+          "seconds": 0.44
+        },
+        "access_log_json": {
+          "detail": "json keys: ['bytes', 'host', 'method', 'proto', 'remote_addr', 'request_id', 'request_time', 'status', 'time', 'ua', 'upstream', 'upstream_time']",
+          "status": "ok",
+          "group": "operations",
+          "title": "Structured (JSON) access log",
+          "seconds": 1.53
+        },
+        "metrics_prometheus": {
+          "detail": "200 1967 samples e.g. kong_bandwidth_bytes{service=\"app\",route=\"a\",direction=\"egress\",workspace=\"defau",
+          "status": "ok",
+          "group": "operations",
+          "title": "Prometheus metrics",
+          "seconds": 0.08
+        },
+        "admin_api": {
+          "detail": "GET /status -> 200 '{\"configuration_hash\":\"b55cae17723fd06b32b94c3fcb22f910\",\"memory\":{\"lua_shared_d'",
+          "status": "ok",
+          "group": "operations",
+          "title": "Admin / stats / runtime API",
+          "seconds": 0.06
+        },
+        "tracing_otel": {
+          "detail": "jaeger traces for service 'kong': 2",
+          "status": "ok",
+          "group": "operations",
+          "title": "Distributed tracing (OpenTelemetry -> Jaeger)",
+          "seconds": 0.05
+        },
+        "docker_label_discovery": {
+          "status": "unsupported",
+          "detail": "no Docker provider (Kong Ingress Controller does this on Kubernetes)",
+          "group": "operations",
+          "title": "Service discovery from Docker labels",
+          "seconds": 0
+        }
+      },
+      "summary": {
+        "ok": 50,
+        "fail": 5,
+        "error": 2,
+        "unsupported": 12
+      },
+      "_seconds": 108.6
+    }
+  },
+  "finished": "2026-09-13T17:51:13+00:00"
+}

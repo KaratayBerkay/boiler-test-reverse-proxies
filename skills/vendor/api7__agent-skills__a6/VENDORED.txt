@@ -1,0 +1,6 @@
+Vendored from: https://github.com/api7/agent-skills
+Path in upstream repo: skills/a6
+Upstream commit: 000d33c (2026-09-11)
+License: Apache-2.0 (see LICENSE)
+Vendored on: 2026-09-13
+Unmodified copy; kept for the reverse-proxies lab (skills/README.md explains why).

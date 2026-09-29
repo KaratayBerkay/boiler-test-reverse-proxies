@@ -1,0 +1,35 @@
+display: Apache APISIX 3.15
+image: apache/apisix:3.15.0-debian
+family: api-gateway
+category: "API gateway on OpenResty (Apache): routes/upstreams/consumers/plugins, standalone yaml config (or etcd)"
+container: pxlab-apisix
+version_cmd: [sh, -c, "apisix version 2>/dev/null | tail -1"]   # the first line is the luajit command
+pre_up: ["python3 gen.py"]
+reload_cmd: ["shell", "python3 gen.py >/dev/null && touch apisix.yaml"]
+reload_kind: "file-watch (standalone mode re-reads apisix.yaml when its mtime changes; routes are swapped without restart)"
+admin: { kind: http, path: /v1/routes, expect: "app" }
+metrics_path: /metrics
+tracing_service: apisix
+cache_header: Apisix-Cache-Status
+features: { health_settle_s: 6, purge: { method: PURGE } }
+unsupported:
+  h2_upstream: "HTTP/2 to upstreams only for gRPC (scheme grpc/grpcs)"
+  proxy_protocol_upstream: "APISIX cannot send PROXY protocol to HTTP upstreams (enable_tcp_pp_to_upstream is for stream routes)"
+  tls_passthrough_sni: "stream routes with `sni` terminate TLS; there is no SNI-based passthrough"
+  acme_auto_cert: "no ACME client in APISIX (use cert-manager / acme.sh and push the certificate)"
+  cache_stale_on_error: "proxy-cache has no stale-if-error mode"
+  compress_zstd: "gzip and brotli plugins only"
+  docker_label_discovery: "no Docker provider (APISIX Ingress Controller does this on Kubernetes)"
+notes: >-
+  Apache APISIX 3.15 in standalone mode (routes in apisix.yaml, hot-reloaded on change). Upstreams show roundrobin / weighted /
+  least_conn / chash on a header, active + passive health checks and retries; traffic-split does the canary split and the cookie
+  stickiness (rules matched on the cookie), proxy-mirror mirrors to shadow, forward-auth / jwt-auth / basic-auth / ip-restriction /
+  limit-req / limit-conn / client-control / cors / fault-injection / redirect / proxy-cache (disk, PURGE) / gzip / brotli /
+  request-id / prometheus / opentelemetry cover the rest; serverless functions set $limit_rate (bandwidth) and serve the static
+  file. HTTP/3 on :8443, h2c on :8080, PROXY protocol on :8082, TCP/UDP stream routes, mTLS per SNI.
+docs:
+  - https://hub.docker.com/r/apache/apisix
+  - https://apisix.apache.org/docs/apisix/deployment-modes/#standalone
+  - https://apisix.apache.org/docs/apisix/plugins/traffic-split/
+  - https://apisix.apache.org/docs/apisix/tutorials/health-check/
+  - https://apisix.apache.org/docs/apisix/plugins/proxy-cache/

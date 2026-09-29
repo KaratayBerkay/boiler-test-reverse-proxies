@@ -1,0 +1,551 @@
+{
+  "stack": "caddy",
+  "display": "Caddy 2",
+  "image": "pxlab-caddy:latest",
+  "family": "go",
+  "category": "web server / reverse proxy (Go) with automatic HTTPS; extended with xcaddy plugins",
+  "run_id": "20260913-191339-1ba84d",
+  "started": "2026-09-13T16:13:39+00:00",
+  "notes": "Caddy 2 built with xcaddy: caddy-ratelimit, caddy-l4 (TCP/UDP/SNI passthrough), caddy-jwt, caddy-brotli and the Souin cache-handler (Caddy has no built-in cache). Automatic HTTPS stays on for acme.lab only (Pebble issuer, HTTP-01 on :80); every other site carries explicit certificates because Caddy would otherwise try to get Let's Encrypt certs for *.lab. h1/h2/h2c/h3 are enabled on the plain and TLS listeners; PROXY protocol is accepted on :8082 through a listener wrapper.",
+  "docs": [
+    "https://hub.docker.com/_/caddy",
+    "https://caddyserver.com/docs/caddyfile/directives/reverse_proxy",
+    "https://caddyserver.com/docs/caddyfile/options",
+    "https://github.com/mholt/caddy-ratelimit",
+    "https://github.com/mholt/caddy-l4",
+    "https://github.com/caddyserver/cache-handler",
+    "https://github.com/ggicci/caddy-jwt"
+  ],
+  "image_size": "160 MB",
+  "startup_s": null,
+  "version": "v2.11.4 h1:XKxkMTgNSizEvKG6QHue6cAsFOteU2qA61w2tKkCWi0=",
+  "containers": [
+    "pxlab-caddy"
+  ],
+  "unsupported": {
+    "lb_mirror": "no request mirroring / shadowing in reverse_proxy",
+    "connection_limit": "no per-client concurrency limit (caddy-ratelimit is a request-rate limiter only)",
+    "fault_injection": "no fault-injection primitive (a CEL matcher cannot draw random numbers); needs a plugin",
+    "bandwidth_limit": "no bandwidth/throughput limiting",
+    "docker_label_discovery": "caddy-docker-proxy (lucaslorentz) is a separate distribution that generates the Caddyfile from labels"
+  },
+  "phases": {
+    "capabilities": {
+      "ready_s": 0.0,
+      "probes": {
+        "route_host": {
+          "detail": "a.lab -> app2 (X-Route=a), b.lab -> b1",
+          "status": "ok",
+          "group": "routing",
+          "title": "Host-based routing",
+          "seconds": 0.0
+        },
+        "route_path_prefix": {
+          "detail": "upstream path=/hello query=x=1 X-Route=api",
+          "status": "ok",
+          "group": "routing",
+          "title": "Path prefix route + strip prefix",
+          "seconds": 0.0
+        },
+        "route_path_regex": {
+          "detail": "path=/v2/things X-Route=versioned",
+          "status": "ok",
+          "group": "routing",
+          "title": "Regex path route",
+          "seconds": 0.0
+        },
+        "route_rewrite": {
+          "detail": "upstream path=/new/thing X-Route=rewritten",
+          "status": "ok",
+          "group": "routing",
+          "title": "URL rewrite (regex capture)",
+          "seconds": 0.0
+        },
+        "route_redirect": {
+          "detail": "301 Location=/landing",
+          "status": "ok",
+          "group": "routing",
+          "title": "Redirect issued by the proxy",
+          "seconds": 0.0
+        },
+        "route_header": {
+          "detail": "instance=canary",
+          "status": "ok",
+          "group": "routing",
+          "title": "Header-based routing",
+          "seconds": 0.0
+        },
+        "route_query": {
+          "detail": "instance=canary",
+          "status": "ok",
+          "group": "routing",
+          "title": "Query-parameter routing",
+          "seconds": 0.0
+        },
+        "route_method": {
+          "detail": "DELETE -> 200 (x-instance=app3)",
+          "status": "fail",
+          "group": "routing",
+          "title": "Method-based rule",
+          "seconds": 0.0
+        },
+        "redirect_https": {
+          "detail": "301 Location=https://redirect.lab/x?q=1",
+          "status": "ok",
+          "group": "routing",
+          "title": "HTTP -> HTTPS redirect",
+          "seconds": 0.0
+        },
+        "lb_round_robin": {
+          "detail": {
+            "app3": 10,
+            "app1": 10,
+            "app2": 10
+          },
+          "status": "ok",
+          "group": "load-balancing",
+          "title": "Round-robin over 3 backends",
+          "seconds": 0.06
+        },
+        "lb_weighted": {
+          "detail": "app1 share=0.75 {'app1': 75, 'app2': 25}",
+          "share": 0.75,
+          "status": "ok",
+          "group": "load-balancing",
+          "title": "Weighted round-robin (3:1)",
+          "seconds": 0.14
+        },
+        "lb_least_conn": {
+          "detail": "slow share=0.02 {'app2': 150, 'slow': 6, 'app1': 144}",
+          "share": 0.02,
+          "status": "ok",
+          "group": "load-balancing",
+          "title": "Least-connections",
+          "seconds": 0.5
+        },
+        "lb_hash_header": {
+          "detail": "u1 -> {'app3': 20}; 10 users -> {'app2': 9, 'app1': 15, 'app3': 6}",
+          "status": "ok",
+          "group": "load-balancing",
+          "title": "Consistent hashing on a header",
+          "seconds": 0.12
+        },
+        "lb_sticky_cookie": {
+          "detail": "cookie='lab_sticky=98d1a8a41d55bf71e0c86254b395e078e23b4f91bd374b390' first=app3 then={'app3': 12}",
+          "status": "ok",
+          "group": "load-balancing",
+          "title": "Cookie stickiness",
+          "seconds": 0.04
+        },
+        "lb_retry_dead_member": {
+          "detail": "codes={200: 30} max_ms=54",
+          "max_ms": 54.5,
+          "status": "ok",
+          "group": "load-balancing",
+          "title": "Retry on connect failure",
+          "seconds": 0.85
+        },
+        "lb_outlier_ejection": {
+          "detail": "first20={200: 17, 500: 3} last20={200: 40} flaky hits in last 20=0",
+          "errors_first20": 3,
+          "errors_last20": -20,
+          "flaky_hits_last20": 0,
+          "status": "ok",
+          "group": "load-balancing",
+          "title": "Passive health / outlier ejection",
+          "seconds": 1.63
+        },
+        "lb_active_health": {
+          "detail": "while unhealthy: {'app2': 15, 'app1': 15} app3 hits=0; re-admitted after 3.7s",
+          "readmit_s": 3.7,
+          "status": "ok",
+          "group": "load-balancing",
+          "title": "Active health checks",
+          "seconds": 8.91
+        },
+        "lb_canary_split": {
+          "detail": "canary share=0.100 {'app1': 60, 'app2': 60, 'app3': 60, 'canary': 20}",
+          "share": 0.1,
+          "status": "ok",
+          "group": "load-balancing",
+          "title": "Weighted traffic split (canary)",
+          "seconds": 0.46
+        },
+        "lb_mirror": {
+          "status": "unsupported",
+          "detail": "no request mirroring / shadowing in reverse_proxy",
+          "group": "load-balancing",
+          "title": "Request mirroring / shadowing",
+          "seconds": 0
+        },
+        "lb_upstream_keepalive": {
+          "detail": "new upstream connections for 60 requests: {'app3': 1, 'app1': 1, 'app2': 1}",
+          "upstream_connections": 3,
+          "status": "ok",
+          "group": "load-balancing",
+          "title": "Upstream connection pooling",
+          "seconds": 0.4
+        },
+        "http2_tls": {
+          "detail": "HTTP/2 200 upstream proto=HTTP/1.1",
+          "status": "ok",
+          "group": "protocols",
+          "title": "HTTP/2 (TLS, ALPN)",
+          "seconds": 0.01
+        },
+        "h2c_frontend": {
+          "detail": "status=200 body=b'{\\n \"instance\": \"app3\",\\n \"pool\": \"app\",\\n '",
+          "status": "ok",
+          "group": "protocols",
+          "title": "HTTP/2 cleartext (prior knowledge) on :8080",
+          "seconds": 0.0
+        },
+        "http3": {
+          "detail": "proto=HTTP/3.0 status={'200': 716} errors=0 []",
+          "status": "ok",
+          "group": "protocols",
+          "title": "HTTP/3 (QUIC)",
+          "seconds": 1.51
+        },
+        "websocket": {
+          "detail": "text echo='hello' binary 4096=4096 instance=app1",
+          "status": "ok",
+          "group": "protocols",
+          "title": "WebSocket proxying",
+          "seconds": 0.04
+        },
+        "sse_streaming": {
+          "detail": "events=5 first=0.0s total=1.21s",
+          "status": "ok",
+          "group": "protocols",
+          "title": "Server-sent events (no response buffering)",
+          "seconds": 1.21
+        },
+        "grpc": {
+          "detail": "tls:8443: SERVING",
+          "via": "tls:8443",
+          "status": "ok",
+          "group": "protocols",
+          "title": "gRPC proxying (h2 -> upstream h2c :9090)",
+          "seconds": 0.1
+        },
+        "h2_upstream": {
+          "detail": "upstream proto=HTTP/2.0",
+          "status": "ok",
+          "group": "protocols",
+          "title": "HTTP/2 to the upstream (h2c)",
+          "seconds": 0.0
+        },
+        "tls_upstream": {
+          "detail": "listener=tls tls={'version': 'TLS1.3', 'sni': 'backend.lab', 'alpn': 'h2'}",
+          "status": "ok",
+          "group": "protocols",
+          "title": "TLS re-encryption to the upstream (verified)",
+          "seconds": 0.0
+        },
+        "proxy_protocol_upstream": {
+          "detail": "listener=pp proxy_protocol={'version': 2, 'src_ip': '10.77.0.1', 'src_port': 0, 'dst_ip': '0.0.0.0', 'dst_port': 0, 'protocol': '0x11'}",
+          "status": "ok",
+          "group": "protocols",
+          "title": "PROXY protocol v2 to the upstream",
+          "seconds": 0.0
+        },
+        "proxy_protocol_accept": {
+          "detail": "X-Forwarded-For=203.0.113.9 remote_addr=10.77.0.2:45440",
+          "status": "ok",
+          "group": "protocols",
+          "title": "Accept PROXY protocol from clients (:8082)",
+          "seconds": 0.0
+        },
+        "tcp_l4": {
+          "detail": "instance=app1 remote_addr=10.77.0.2:39362 headers=['Connection']",
+          "status": "ok",
+          "group": "protocols",
+          "title": "TCP (L4) proxying",
+          "seconds": 0.0
+        },
+        "udp_l4": {
+          "detail": "echo:app1:ping-a6cbb3",
+          "status": "ok",
+          "group": "protocols",
+          "title": "UDP proxying",
+          "seconds": 0.0
+        },
+        "tls_passthrough_sni": {
+          "detail": "subject=CN = backend.lab, O = pxlab TLSv1.3",
+          "status": "ok",
+          "group": "protocols",
+          "title": "TLS passthrough by SNI (L4)",
+          "seconds": 0.04
+        },
+        "tls_termination": {
+          "detail": "200 cert=CN = app.lab, O = pxlab TLSv1.3 X-Forwarded-Proto=https",
+          "status": "ok",
+          "group": "tls",
+          "title": "TLS termination",
+          "seconds": 0.05
+        },
+        "tls13": {
+          "detail": "TLSv1.3 TLS_AES_128_GCM_SHA256",
+          "status": "ok",
+          "group": "tls",
+          "title": "TLS 1.3 negotiated",
+          "seconds": 0.0
+        },
+        "tls_legacy_refused": {
+          "detail": "80A76E881C790000:error:0A00042E:SSL routines:ssl3_read_bytes:tlsv1 alert protocol version:../ssl/record/rec_layer_s3.c:918:SSL alert number 70\nProtocol: TLSv1.1\n    Protocol  : TLSv1.1",
+          "status": "ok",
+          "group": "tls",
+          "title": "TLS 1.0/1.1 refused",
+          "seconds": 0.41
+        },
+        "mtls_client_cert": {
+          "detail": "without cert: ReadError: [SSL: TLSV13_ALERT_CERTIFICATE_REQUIRED] tlsv13 alert certificate req; with cert: 200; forwarded: {'X-Client-Cert-Cn': 'CN=lab-client,O=pxlab'}",
+          "cert_headers": {
+            "X-Client-Cert-Cn": "CN=lab-client,O=pxlab"
+          },
+          "status": "ok",
+          "group": "tls",
+          "title": "Mutual TLS (client certificate required)",
+          "seconds": 0.01
+        },
+        "sni_multi_cert": {
+          "detail": "app.lab -> CN = app.lab, O = pxlab; b.lab -> CN = b.lab, O = pxlab",
+          "status": "ok",
+          "group": "tls",
+          "title": "Multiple certificates selected by SNI",
+          "seconds": 0.07
+        },
+        "acme_auto_cert": {
+          "detail": "subject=CN = app.lab, O = pxlab issuer=CN = pxlab CA, O = pxlab sans=DNS:localhost, DNS:proxy, IP Address:127.0.0.1, DNS:app.lab, DNS:a.lab, DNS:weighted.lab, DNS:leastconn.lab, DNS:hash.lab, DNS:sticky.lab, DNS:retry.lab, DNS:cb.lab, DNS:health.lab, DNS:canary.lab, DNS:mirror.lab, DNS:pp.lab, DNS:h2.lab, DNS:tls.lab, DNS:auth.lab, DNS:jwt.lab, DNS:mtls.lab, DNS:redirect.lab, DNS:whoami.lab",
+          "status": "fail",
+          "group": "tls",
+          "title": "Automatic certificate via ACME (Pebble)",
+          "seconds": 91.29
+        },
+        "cache_hit": {
+          "detail": "origin app2#1 -> app2#1; Cache-Status: Souin; fwd=uri-miss; stored; key=GET-http-app.lab:18080-/cacheable/a6cbb3 -> Souin; hit; ttl=59; key=GET-http-app.lab:18080-/cacheable/a6cbb3; detail=DEFAULT age=1",
+          "status": "ok",
+          "group": "caching",
+          "title": "Response caching",
+          "seconds": 0.02
+        },
+        "cache_purge": {
+          "detail": "purge -> 200; origin app3#1 -> app2#1",
+          "status": "ok",
+          "group": "caching",
+          "title": "Cache purge",
+          "seconds": 0.03
+        },
+        "cache_stale_on_error": {
+          "detail": "first 200 origin=app2#1; after expiry with origin 503: 200 origin=app2#1 Cache-Status=Souin; hit; ttl=-2; key=GET-http-app.lab:18080-/cacheable-short/a6cbb3; detail=DEFAULT; fwd=stale; fwd-status=503",
+          "status": "ok",
+          "group": "caching",
+          "title": "Serve stale on upstream error",
+          "seconds": 2.62
+        },
+        "compress_gzip": {
+          "detail": "Content-Encoding=gzip 352 bytes (65536 uncompressed)",
+          "bytes": 352,
+          "status": "ok",
+          "group": "compression",
+          "title": "gzip compression",
+          "seconds": 0.0
+        },
+        "compress_brotli": {
+          "detail": "Content-Encoding=br 417 bytes (65536 uncompressed)",
+          "bytes": 417,
+          "status": "ok",
+          "group": "compression",
+          "title": "Brotli compression",
+          "seconds": 0.0
+        },
+        "compress_zstd": {
+          "detail": "Content-Encoding=zstd 102 bytes (65536 uncompressed)",
+          "bytes": 102,
+          "status": "ok",
+          "group": "compression",
+          "title": "Zstandard compression",
+          "seconds": 0.01
+        },
+        "xff_headers": {
+          "detail": "XFF=10.77.0.1 Proto=http Host=app.lab:18080 X-Real-IP=10.77.0.1",
+          "status": "ok",
+          "group": "headers",
+          "title": "X-Forwarded-* headers",
+          "seconds": 0.0
+        },
+        "forwarded_rfc7239": {
+          "detail": "Forwarded='for=10.77.0.1;proto=http;host=app.lab'",
+          "status": "ok",
+          "group": "headers",
+          "title": "RFC 7239 Forwarded header",
+          "seconds": 0.0
+        },
+        "header_add_remove": {
+          "detail": "X-Lab-Proxy=caddy X-Powered-By=removed Server=None",
+          "status": "ok",
+          "group": "headers",
+          "title": "Header manipulation",
+          "seconds": 0.0
+        },
+        "request_id": {
+          "detail": "'010ebe18-203f-4b1c-825c-14ad39cb3893' / 'bd9af42c-bdc3-49bb-915e-0f9e685b8c79'",
+          "status": "ok",
+          "group": "headers",
+          "title": "Request ID generation",
+          "seconds": 0.01
+        },
+        "rate_limit": {
+          "detail": "codes={200: 10, 429: 30}",
+          "rejected": 30,
+          "status": "ok",
+          "group": "security",
+          "title": "Request rate limiting",
+          "seconds": 0.09
+        },
+        "connection_limit": {
+          "status": "unsupported",
+          "detail": "no per-client concurrency limit (caddy-ratelimit is a request-rate limiter only)",
+          "group": "security",
+          "title": "Concurrent connection limit",
+          "seconds": 0
+        },
+        "ip_allow_deny": {
+          "detail": "/allowed=200 /denied=200",
+          "status": "fail",
+          "group": "security",
+          "title": "IP allow / deny lists",
+          "seconds": 0.01
+        },
+        "basic_auth": {
+          "detail": "no creds=401 (Basic realm=\"restricted\") creds=200",
+          "status": "ok",
+          "group": "security",
+          "title": "HTTP basic authentication",
+          "seconds": 0.01
+        },
+        "jwt_auth": {
+          "detail": "none=401 valid=200 bad-sig=401",
+          "status": "ok",
+          "group": "security",
+          "title": "JWT validation (HS256)",
+          "seconds": 0.01
+        },
+        "forward_auth": {
+          "detail": "none=401 token=200 X-Auth-User=alice",
+          "status": "ok",
+          "group": "security",
+          "title": "External authorization (forward auth / auth_request / ext_authz)",
+          "seconds": 0.01
+        },
+        "cors": {
+          "detail": "204 ACAO=https://example.com methods=GET, POST, PUT, DELETE, OPTIONS",
+          "status": "ok",
+          "group": "security",
+          "title": "CORS preflight answered by the proxy",
+          "seconds": 0.0
+        },
+        "security_headers": {
+          "detail": "{'strict-transport-security': 'max-age=31536000; includeSubDomains', 'x-content-type-options': 'nosniff', 'x-frame-options': 'DENY', 'referrer-policy': 'strict-origin-when-cross-origin'}",
+          "status": "ok",
+          "group": "security",
+          "title": "Security response headers",
+          "seconds": 0.0
+        },
+        "body_size_limit": {
+          "detail": "2MiB=413 100KiB=200",
+          "status": "ok",
+          "group": "security",
+          "title": "Request body size limit",
+          "seconds": 0.01
+        },
+        "upstream_timeout": {
+          "detail": "504 after 2.00s",
+          "seconds": 2.0,
+          "status": "ok",
+          "group": "security",
+          "title": "Upstream read timeout"
+        },
+        "fault_injection": {
+          "status": "unsupported",
+          "detail": "no fault-injection primitive (a CEL matcher cannot draw random numbers); needs a plugin",
+          "group": "security",
+          "title": "Fault injection",
+          "seconds": 0
+        },
+        "bandwidth_limit": {
+          "status": "unsupported",
+          "detail": "no bandwidth/throughput limiting",
+          "group": "security",
+          "title": "Bandwidth limiting",
+          "seconds": 0
+        },
+        "static_files": {
+          "detail": "404 '' x-instance=None",
+          "status": "fail",
+          "group": "operations",
+          "title": "Static file serving",
+          "seconds": 0.0
+        },
+        "custom_error_page": {
+          "detail": "503 X-Error-Page=custom body='<!doctype html><title>pxlab error</title><h1>Custom error pa'",
+          "status": "ok",
+          "group": "operations",
+          "title": "Custom error page",
+          "seconds": 0.0
+        },
+        "hot_reload": {
+          "detail": "reload rc=0 '{\"level\":\"info\",\"ts\":1789316133.621407,\"msg\":\"using config from file\",\"file\":\"/etc/caddy/Caddyfile\"}\\n{\"level\":\"info\",\"ts'; then 200",
+          "status": "ok",
+          "group": "operations",
+          "title": "Configuration reload without restart",
+          "seconds": 0.18
+        },
+        "access_log_json": {
+          "detail": "json keys: ['bytes_read', 'duration', 'level', 'logger', 'msg', 'request', 'resp_headers', 'size', 'status', 'ts', 'user_id', 'uuid']",
+          "status": "ok",
+          "group": "operations",
+          "title": "Structured (JSON) access log",
+          "seconds": 1.53
+        },
+        "metrics_prometheus": {
+          "detail": "200 1079 samples e.g. caddy_admin_http_requests_total{code=\"200\",handler=\"admin\",method=\"POST\",path=\"/",
+          "status": "ok",
+          "group": "operations",
+          "title": "Prometheus metrics",
+          "seconds": 0.04
+        },
+        "admin_api": {
+          "detail": "GET /config/ -> 200 '{\"admin\":{\"listen\":\"0.0.0.0:2019\"},\"apps\":{\"cache\":{\"Storers\":null,\"SurrogateKey'",
+          "status": "ok",
+          "group": "operations",
+          "title": "Admin / stats / runtime API",
+          "seconds": 0.04
+        },
+        "tracing_otel": {
+          "detail": "jaeger traces for service 'caddy': 0",
+          "status": "fail",
+          "group": "operations",
+          "title": "Distributed tracing (OpenTelemetry -> Jaeger)",
+          "seconds": 20.78
+        },
+        "docker_label_discovery": {
+          "status": "unsupported",
+          "detail": "caddy-docker-proxy (lucaslorentz) is a separate distribution that generates the Caddyfile from labels",
+          "group": "operations",
+          "title": "Service discovery from Docker labels",
+          "seconds": 0
+        }
+      },
+      "summary": {
+        "ok": 59,
+        "fail": 5,
+        "error": 0,
+        "unsupported": 5
+      },
+      "_seconds": 137.8
+    }
+  },
+  "finished": "2026-09-13T16:15:57+00:00"
+}

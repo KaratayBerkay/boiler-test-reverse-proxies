@@ -1,0 +1,86 @@
+{
+  "stack": "apache",
+  "display": "Apache httpd 2.4",
+  "image": "httpd:2.4",
+  "family": "c",
+  "category": "the classic modular web server (C) used as a reverse proxy: mod_proxy + balancer + hcheck + cache + md",
+  "run_id": "20260913-202000-163173",
+  "started": "2026-09-13T17:20:00+00:00",
+  "notes": "Official httpd 2.4 image, event MPM sized for 4 cores. Demonstrates mod_proxy (http/h2c/ws/tls upstreams), mod_proxy_balancer (byrequests, bybusyness, loadfactor, stickysession, failonstatus), mod_proxy_hcheck active health checks, mod_cache_disk with CacheStaleOnError, mod_deflate + mod_brotli, mod_ratelimit bandwidth limiting, mod_remoteip PROXY protocol, mod_md ACME against Pebble (activated by a graceful reload from MDMessageCmd), mTLS with SSL_CLIENT_S_DN_CN, mod_unique_id request ids, JSON access log and a Prometheus exporter sidecar. No HTTP/3, no L4, no rate limiting, no JWT/forward auth without third-party modules.",
+  "docs": [
+    "https://hub.docker.com/_/httpd",
+    "https://httpd.apache.org/docs/2.4/mod/mod_proxy.html",
+    "https://httpd.apache.org/docs/2.4/mod/mod_proxy_balancer.html",
+    "https://httpd.apache.org/docs/2.4/mod/mod_md.html",
+    "https://httpd.apache.org/docs/2.4/mod/mod_cache.html"
+  ],
+  "image_size": "175 MB",
+  "startup_s": null,
+  "version": "Server version: Apache/2.4.68 (Unix)",
+  "containers": [
+    "pxlab-apache",
+    "pxlab-apache-exporter"
+  ],
+  "unsupported": {
+    "lb_hash_header": "mod_proxy_balancer has byrequests / bytraffic / bybusyness / heartbeat only - no consistent hashing",
+    "lb_mirror": "no request mirroring in mod_proxy",
+    "proxy_protocol_upstream": "mod_proxy cannot send PROXY protocol to upstreams (mod_remoteip only accepts it)",
+    "tcp_l4": "httpd is HTTP-only (no generic TCP proxying)",
+    "udp_l4": "httpd is HTTP-only",
+    "tls_passthrough_sni": "no L4 passthrough (mod_proxy terminates or re-encrypts TLS)",
+    "http3": "no HTTP/3 in httpd (mod_http2 stops at HTTP/2)",
+    "cache_purge": "mod_cache has no purge API (htcacheclean works offline on the disk cache)",
+    "compress_zstd": "no zstd output filter (mod_deflate = gzip, mod_brotli = br)",
+    "rate_limit": "no request-rate limiting in the standard modules (mod_ratelimit is bandwidth only; mod_qos / mod_evasive are third-party)",
+    "connection_limit": "no per-client concurrency limit in the standard modules (mod_qos is third-party)",
+    "jwt_auth": "JWT validation needs a third-party module (mod_auth_openidc, mod_authnz_jwt)",
+    "forward_auth": "no auth_request-style subrequest to an external authorizer in httpd core",
+    "tracing_otel": "the OpenTelemetry Apache module (otel-webserver-module) is a separate build",
+    "docker_label_discovery": "no Docker provider"
+  },
+  "phases": {
+    "capabilities": {
+      "ready_s": 0.0,
+      "probes": {
+        "lb_least_conn": {
+          "detail": "slow share=0.33 {'app1': 100, 'app2': 100, 'slow': 100}",
+          "share": 0.3333333333333333,
+          "status": "fail",
+          "group": "load-balancing",
+          "title": "Least-connections",
+          "seconds": 0.7
+        },
+        "lb_active_health": {
+          "detail": "while unhealthy: {'app1': 10, 'app2': 10, 'app3': 10} app3 hits=10; re-admitted after 0.0s",
+          "readmit_s": 0.0,
+          "status": "fail",
+          "group": "load-balancing",
+          "title": "Active health checks",
+          "seconds": 8.32
+        },
+        "acme_auto_cert": {
+          "detail": "subject= issuer=CN = Pebble Intermediate CA 386164 sans=DNS:acme.lab",
+          "status": "ok",
+          "group": "tls",
+          "title": "Automatic certificate via ACME (Pebble)",
+          "seconds": 0.05
+        },
+        "hot_reload": {
+          "detail": "reload rc=0 ''; then 200",
+          "status": "ok",
+          "group": "operations",
+          "title": "Configuration reload without restart",
+          "seconds": 0.19
+        }
+      },
+      "summary": {
+        "ok": 2,
+        "fail": 2,
+        "error": 0,
+        "unsupported": 0
+      },
+      "_seconds": 11.5
+    }
+  },
+  "finished": "2026-09-13T17:20:12+00:00"
+}

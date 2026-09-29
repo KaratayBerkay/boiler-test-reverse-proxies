@@ -1,0 +1,33 @@
+display: Envoy 1.39
+image: envoyproxy/envoy:v1.39-latest
+family: envoy
+category: "cloud-native L4/L7 proxy (C++): the data plane of Istio & co, configured through xDS"
+container: pxlab-envoy
+version_cmd: [envoy, --version]
+pre_up: ["python3 gen.py"]
+reload_cmd: ["shell", "sed -i \"s/^version_info: .*/version_info: \\\"$(date +%s)\\\"/\" rds.yaml"]
+reload_kind: xds-file-watch (a new rds.yaml version is picked up by the watched directory and swapped in without restart)
+admin: { kind: http, path: /server_info, expect: "version" }
+metrics_path: /metrics
+tracing_service: envoy
+cache_header: age
+features: { health_settle_s: 5 }
+unsupported:
+  connection_limit: "the connection_limit network filter is per listener; per-client concurrency needs the global rate-limit service"
+  acme_auto_cert: "no ACME client in Envoy (certificates come from SDS / a control plane such as cert-manager)"
+  cache_hit: "the HTTP cache filter is alpha; in 1.39 it makes its own internal upstream request that bypasses route-level header mutations, redirects and direct responses for every route (breaks 20+ probes), so it is left out"
+  cache_purge: "no cache filter in use (and the alpha cache filter has no invalidation API)"
+  cache_stale_on_error: "no cache filter in use (and the alpha cache filter has no stale-if-error mode)"
+  docker_label_discovery: "no Docker provider; endpoints come from xDS (or STRICT_DNS as here)"
+notes: >-
+  Official Envoy image with a bootstrap + file-based xDS (LDS/CDS/RDS files in a watched directory: bumping a version
+  is the reload). lds.yaml is generated from lds.src.yaml because Envoy's YAML parser has no merge keys. Demonstrates
+  ExtensionWithMatcher (ext_authz / basic_auth only where wanted), per-route filter configs (fault, local rate limit, RBAC,
+  buffer, bandwidth limit, Lua error page, JWT), ring-hash cookies, outlier detection, mirroring, weighted clusters,
+  h2c/TLS/PROXY-protocol upstreams, QUIC/HTTP/3, UDP proxy, OTel tracing and JSON access logs.
+docs:
+  - https://hub.docker.com/r/envoyproxy/envoy
+  - https://www.envoyproxy.io/docs/envoy/latest/configuration/http/http_filters/http_filters
+  - https://www.envoyproxy.io/docs/envoy/latest/intro/arch_overview/upstream/load_balancing/load_balancing
+  - https://www.envoyproxy.io/docs/envoy/latest/configuration/overview/xds_api
+  - https://www.envoyproxy.io/docs/envoy/latest/configuration/http/http_conn_man/http_conn_man

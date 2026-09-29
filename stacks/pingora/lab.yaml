@@ -1,0 +1,45 @@
+display: Pingora (Rust, custom)
+image: pxlab-pingora:latest
+build: true
+family: rust
+category: "a proxy written in Rust on Cloudflare's Pingora framework - routing and policies as code"
+container: pxlab-pingora
+version_cmd: [sh, -c, "echo 'pingora-lab 0.1.0 (pingora 0.9)'"]   # the binary has no --version flag
+# zero-downtime upgrade: start the new process (it waits for the listening sockets on the upgrade socket), then SIGQUIT
+# the old one which hands the sockets over and drains; stdout/stderr go to the container's log
+reload_cmd: [sh, -c, "OLD=$(pgrep -o -x pingora-lab); nohup pingora-lab -u -c /etc/pingora/config.yaml >/proc/1/fd/1 2>/proc/1/fd/2 & sleep 0.5; kill -QUIT $OLD; sleep 1.5; pgrep -x pingora-lab >/dev/null"]
+reload_kind: "zero-downtime upgrade (new process started with -u takes the listening sockets over the upgrade socket; the old one gets SIGQUIT and drains)"
+admin: { kind: http, path: /, expect: "pingora-lab" }
+metrics_path: /metrics
+tracing_service: ""
+cache_header: X-Cache
+features: { health_settle_s: 5 }
+unsupported:
+  lb_least_conn: "pingora-load-balancing ships round-robin / random / consistent-hash selection; least-connections would be a custom BackendSelection"
+  lb_mirror: "no mirroring in the framework (would be a second upstream request written by hand)"
+  proxy_protocol_upstream: "no PROXY protocol towards upstreams"
+  proxy_protocol_accept: "no PROXY protocol on listeners"
+  udp_l4: "Pingora is TCP/HTTP only"
+  tls_passthrough_sni: "the L4 app in this proxy copies bytes; SNI parsing for passthrough is not implemented"
+  http3: "no HTTP/3 in Pingora"
+  acme_auto_cert: "no ACME client (certificates come from files / callbacks)"
+  cache_purge: "pingora-cache serves PURGE only for storages implementing purge; MemCache does in principle but the lab keeps it out of scope"
+  cache_stale_on_error: "stale-if-error is wired through should_serve_stale(); the in-memory cache expires objects before the lab's 2 s window"
+  compress_brotli: "pingora's compression module in this build negotiates gzip/zstd (brotli support is feature-gated)"
+  forward_auth: "no built-in subrequest to an authorizer (would be a hand-written upstream call)"
+  bandwidth_limit: "no built-in bandwidth limiting (body filters are synchronous)"
+  tracing_otel: "no OpenTelemetry integration in this binary"
+  docker_label_discovery: "no Docker provider"
+notes: >-
+  A ~700-line Rust proxy on Pingora 0.9 (Cloudflare's framework): ProxyHttp hooks implement host/path routing, round-robin /
+  weighted / ketama hashing / cookie stickiness, HTTP health checks, retries on connect failure, outlier ejection, h2c and
+  verified-TLS upstreams, gRPC, rate and concurrency limits (pingora-limits), JWT (jsonwebtoken), basic auth, IP lists, fault
+  injection, per-route timeouts, response cache (pingora-cache MemCache), compression, mTLS, SNI certificate callback, a static
+  file, a custom error page, JSON access log, Prometheus metrics, a status API and a raw TCP proxy app. Zero-downtime upgrade via
+  the framework's socket hand-off. What is missing is missing from the code, not from the framework's limits (mostly).
+docs:
+  - https://github.com/cloudflare/pingora
+  - https://github.com/cloudflare/pingora/blob/main/docs/user_guide/index.md
+  - https://docs.rs/pingora-proxy/latest/pingora_proxy/trait.ProxyHttp.html
+  - https://docs.rs/pingora-load-balancing/latest/
+  - https://docs.rs/pingora-cache/latest/

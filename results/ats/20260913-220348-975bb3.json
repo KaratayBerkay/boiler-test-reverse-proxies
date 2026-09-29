@@ -1,0 +1,561 @@
+{
+  "stack": "ats",
+  "display": "Apache Traffic Server 9.2",
+  "image": "pxlab-ats:latest",
+  "family": "cache",
+  "category": "CDN-grade caching proxy (C++): remap rules, NextHop strategies, plugins (Yahoo/Apple/Comcast lineage)",
+  "run_id": "20260913-220348-975bb3",
+  "started": "2026-09-13T19:03:48+00:00",
+  "notes": "ATS 9.2.3 from Ubuntu packages. remap.config is generated from remap.spec because ATS compares the request URL's port with the from-URL; NextHop strategies.yaml provides round-robin, weights and passive failover; header_rewrite does routing by header/query, method 405, IP lists, basic auth, body limit, fault injection, CORS and security headers; conf_remap sets per-remap timeouts, fq_pacing paces bandwidth, rate_limit.so caps concurrency, multiplexer mirrors, statichit serves a file, sslheaders exposes the client certificate, compress.so does gzip/brotli, sni.yaml gives mTLS and SNI tunnels, and stats_over_http/traffic_ctl are the admin surface. JSON access log through logging.yaml to stdout.",
+  "docs": [
+    "https://docs.trafficserver.apache.org/en/9.2.x/admin-guide/configuration/index.en.html",
+    "https://docs.trafficserver.apache.org/en/9.2.x/admin-guide/files/remap.config.en.html",
+    "https://docs.trafficserver.apache.org/en/9.2.x/admin-guide/files/strategies.yaml.en.html",
+    "https://docs.trafficserver.apache.org/en/9.2.x/admin-guide/plugins/header_rewrite.en.html",
+    "https://docs.trafficserver.apache.org/en/9.2.x/admin-guide/files/sni.yaml.en.html"
+  ],
+  "image_size": "235 MB",
+  "startup_s": null,
+  "version": "Traffic Server 9.2.3 Feb 12 2026 02:40:38 localhost",
+  "containers": [
+    "pxlab-ats"
+  ],
+  "unsupported": {
+    "lb_least_conn": "NextHop strategies offer rr_strict / rr_ip / first_live / latched / consistent_hash - no least-connections",
+    "lb_weighted": "strategies apply weights only to consistent_hash (same URL -> same host); there is no weighted round-robin in 9.2",
+    "lb_canary_split": "no weighted round-robin (see lb_weighted); a canary needs the consistent-hash weights on varying keys",
+    "lb_hash_header": "consistent_hash keys are url / path / cache_key / hostname - a request header cannot be the key",
+    "lb_sticky_cookie": "no cookie stickiness (cookie_remap can route on cookies but does not set them)",
+    "lb_active_health": "ATS 9 strategies only do passive health (active origin checks arrived with ATS 10)",
+    "h2_upstream": "ATS 9 speaks HTTP/1.1 to origins",
+    "proxy_protocol_upstream": "no PROXY protocol towards origins in 9.2",
+    "tcp_l4": "ATS is an HTTP proxy (sni.yaml tunnel_route is the only L4 feature)",
+    "udp_l4": "HTTP only",
+    "http3": "the Ubuntu build has no QUIC (experimental in 9.x, needs quiche)",
+    "h2c_frontend": "cleartext HTTP/2 is not supported on plain ports (h2 via ALPN only)",
+    "grpc": "no HTTP/2 to origins, so no gRPC proxying",
+    "acme_auto_cert": "acme.so only serves challenge files; there is no ACME client",
+    "rate_limit": "rate_limit.so limits concurrency per remap, not requests per second per client",
+    "jwt_auth": "no JWT validation plugin (uri_signing.so signs URLs; tslua could do it)",
+    "forward_auth": "authproxy.so forwards the ORIGINAL path to the authorizer, which does not fit the lab's /auth service",
+    "custom_error_page": "origin error bodies pass through; body_factory only styles ATS-generated errors",
+    "bandwidth_limit": "fq_pacing.so needs the kernel fq qdisc (SO_MAX_PACING_RATE) on the interface, which a container does not have",
+    "compress_zstd": "compress.so does gzip and brotli",
+    "metrics_prometheus": "stats_over_http.so exposes JSON at /_stats; Prometheus needs an exporter",
+    "tracing_otel": "no OpenTelemetry",
+    "docker_label_discovery": "no Docker provider"
+  },
+  "phases": {
+    "capabilities": {
+      "ready_s": 14.9,
+      "probes": {
+        "route_host": {
+          "detail": "a.lab -> app2 (X-Route=a), b.lab -> b1",
+          "status": "ok",
+          "group": "routing",
+          "title": "Host-based routing",
+          "seconds": 0.04
+        },
+        "route_path_prefix": {
+          "detail": "upstream path=/hello query=x=1 X-Route=api",
+          "status": "ok",
+          "group": "routing",
+          "title": "Path prefix route + strip prefix",
+          "seconds": 0.02
+        },
+        "route_path_regex": {
+          "detail": "path=/v2/things X-Route=versioned",
+          "status": "ok",
+          "group": "routing",
+          "title": "Regex path route",
+          "seconds": 0.0
+        },
+        "route_rewrite": {
+          "detail": "upstream path=/new/thing X-Route=rewritten",
+          "status": "ok",
+          "group": "routing",
+          "title": "URL rewrite (regex capture)",
+          "seconds": 0.0
+        },
+        "route_redirect": {
+          "detail": "200 Location=",
+          "status": "fail",
+          "group": "routing",
+          "title": "Redirect issued by the proxy",
+          "seconds": 0.0
+        },
+        "route_header": {
+          "detail": "instance=app1",
+          "status": "fail",
+          "group": "routing",
+          "title": "Header-based routing",
+          "seconds": 0.0
+        },
+        "route_query": {
+          "detail": "instance=app2",
+          "status": "fail",
+          "group": "routing",
+          "title": "Query-parameter routing",
+          "seconds": 0.0
+        },
+        "route_method": {
+          "detail": "DELETE -> 405 (x-instance=None)",
+          "status": "ok",
+          "group": "routing",
+          "title": "Method-based rule",
+          "seconds": 0.0
+        },
+        "redirect_https": {
+          "detail": "301 Location=https://redirect.lab/x?q=1",
+          "status": "ok",
+          "group": "routing",
+          "title": "HTTP -> HTTPS redirect",
+          "seconds": 0.0
+        },
+        "lb_round_robin": {
+          "detail": {
+            "app3": 10,
+            "app1": 10,
+            "app2": 10
+          },
+          "status": "ok",
+          "group": "load-balancing",
+          "title": "Round-robin over 3 backends",
+          "seconds": 0.08
+        },
+        "lb_weighted": {
+          "status": "unsupported",
+          "detail": "strategies apply weights only to consistent_hash (same URL -> same host); there is no weighted round-robin in 9.2",
+          "group": "load-balancing",
+          "title": "Weighted round-robin (3:1)",
+          "seconds": 0
+        },
+        "lb_least_conn": {
+          "status": "unsupported",
+          "detail": "NextHop strategies offer rr_strict / rr_ip / first_live / latched / consistent_hash - no least-connections",
+          "group": "load-balancing",
+          "title": "Least-connections",
+          "seconds": 0
+        },
+        "lb_hash_header": {
+          "status": "unsupported",
+          "detail": "consistent_hash keys are url / path / cache_key / hostname - a request header cannot be the key",
+          "group": "load-balancing",
+          "title": "Consistent hashing on a header",
+          "seconds": 0
+        },
+        "lb_sticky_cookie": {
+          "status": "unsupported",
+          "detail": "no cookie stickiness (cookie_remap can route on cookies but does not set them)",
+          "group": "load-balancing",
+          "title": "Cookie stickiness",
+          "seconds": 0
+        },
+        "lb_retry_dead_member": {
+          "detail": "codes={200: 30} max_ms=32",
+          "max_ms": 32.1,
+          "status": "ok",
+          "group": "load-balancing",
+          "title": "Retry on connect failure",
+          "seconds": 0.13
+        },
+        "lb_outlier_ejection": {
+          "detail": "first20={200: 20} last20={200: 40} flaky hits in last 20=7",
+          "errors_first20": 0,
+          "errors_last20": -20,
+          "flaky_hits_last20": 7,
+          "status": "fail",
+          "group": "load-balancing",
+          "title": "Passive health / outlier ejection",
+          "seconds": 1.69
+        },
+        "lb_active_health": {
+          "status": "unsupported",
+          "detail": "ATS 9 strategies only do passive health (active origin checks arrived with ATS 10)",
+          "group": "load-balancing",
+          "title": "Active health checks",
+          "seconds": 0
+        },
+        "lb_canary_split": {
+          "status": "unsupported",
+          "detail": "no weighted round-robin (see lb_weighted); a canary needs the consistent-hash weights on varying keys",
+          "group": "load-balancing",
+          "title": "Weighted traffic split (canary)",
+          "seconds": 0
+        },
+        "lb_mirror": {
+          "detail": "shadow received 20/20",
+          "mirrored": 20,
+          "status": "ok",
+          "group": "load-balancing",
+          "title": "Request mirroring / shadowing",
+          "seconds": 1.14
+        },
+        "lb_upstream_keepalive": {
+          "detail": "new upstream connections for 60 requests: {'app3': 1, 'app1': 1, 'app2': 1}",
+          "upstream_connections": 3,
+          "status": "ok",
+          "group": "load-balancing",
+          "title": "Upstream connection pooling",
+          "seconds": 0.36
+        },
+        "http2_tls": {
+          "detail": "HTTP/2 200 upstream proto=HTTP/1.1",
+          "status": "ok",
+          "group": "protocols",
+          "title": "HTTP/2 (TLS, ALPN)",
+          "seconds": 0.01
+        },
+        "h2c_frontend": {
+          "status": "unsupported",
+          "detail": "cleartext HTTP/2 is not supported on plain ports (h2 via ALPN only)",
+          "group": "protocols",
+          "title": "HTTP/2 cleartext (prior knowledge) on :8080",
+          "seconds": 0
+        },
+        "http3": {
+          "status": "unsupported",
+          "detail": "the Ubuntu build has no QUIC (experimental in 9.x, needs quiche)",
+          "group": "protocols",
+          "title": "HTTP/3 (QUIC)",
+          "seconds": 0
+        },
+        "websocket": {
+          "detail": "text echo='hello' binary 4096=4096 instance=app1",
+          "status": "ok",
+          "group": "protocols",
+          "title": "WebSocket proxying",
+          "seconds": 0.02
+        },
+        "sse_streaming": {
+          "detail": "events=5 first=0.0s total=1.20s",
+          "status": "ok",
+          "group": "protocols",
+          "title": "Server-sent events (no response buffering)",
+          "seconds": 1.2
+        },
+        "grpc": {
+          "status": "unsupported",
+          "detail": "no HTTP/2 to origins, so no gRPC proxying",
+          "group": "protocols",
+          "title": "gRPC proxying (h2 -> upstream h2c :9090)",
+          "seconds": 0
+        },
+        "h2_upstream": {
+          "status": "unsupported",
+          "detail": "ATS 9 speaks HTTP/1.1 to origins",
+          "group": "protocols",
+          "title": "HTTP/2 to the upstream (h2c)",
+          "seconds": 0
+        },
+        "tls_upstream": {
+          "detail": "listener=tls tls={'version': 'TLS1.3', 'sni': 'app1', 'alpn': ''}",
+          "status": "ok",
+          "group": "protocols",
+          "title": "TLS re-encryption to the upstream (verified)",
+          "seconds": 0.04
+        },
+        "proxy_protocol_upstream": {
+          "status": "unsupported",
+          "detail": "no PROXY protocol towards origins in 9.2",
+          "group": "protocols",
+          "title": "PROXY protocol v2 to the upstream",
+          "seconds": 0
+        },
+        "proxy_protocol_accept": {
+          "detail": "X-Forwarded-For=203.0.113.9 remote_addr=10.77.0.2:46638",
+          "status": "ok",
+          "group": "protocols",
+          "title": "Accept PROXY protocol from clients (:8082)",
+          "seconds": 0.0
+        },
+        "tcp_l4": {
+          "status": "unsupported",
+          "detail": "ATS is an HTTP proxy (sni.yaml tunnel_route is the only L4 feature)",
+          "group": "protocols",
+          "title": "TCP (L4) proxying",
+          "seconds": 0
+        },
+        "udp_l4": {
+          "status": "unsupported",
+          "detail": "HTTP only",
+          "group": "protocols",
+          "title": "UDP proxying",
+          "seconds": 0
+        },
+        "tls_passthrough_sni": {
+          "detail": "subject=CN = backend.lab, O = pxlab TLSv1.3",
+          "status": "ok",
+          "group": "protocols",
+          "title": "TLS passthrough by SNI (L4)",
+          "seconds": 0.04
+        },
+        "tls_termination": {
+          "detail": "200 cert=CN = app.lab, O = pxlab TLSv1.3 X-Forwarded-Proto=https",
+          "status": "ok",
+          "group": "tls",
+          "title": "TLS termination",
+          "seconds": 0.05
+        },
+        "tls13": {
+          "detail": "TLSv1.3 TLS_AES_256_GCM_SHA384",
+          "status": "ok",
+          "group": "tls",
+          "title": "TLS 1.3 negotiated",
+          "seconds": 0.01
+        },
+        "tls_legacy_refused": {
+          "detail": "80F7ED1A36700000:error:0A00042E:SSL routines:ssl3_read_bytes:tlsv1 alert protocol version:../ssl/record/rec_layer_s3.c:918:SSL alert number 70\nProtocol: TLSv1.1\n    Protocol  : TLSv1.1",
+          "status": "ok",
+          "group": "tls",
+          "title": "TLS 1.0/1.1 refused",
+          "seconds": 0.48
+        },
+        "mtls_client_cert": {
+          "detail": "RemoteProtocolError: Server disconnected without sending a response.",
+          "status": "error",
+          "group": "tls",
+          "title": "Mutual TLS (client certificate required)",
+          "seconds": 0.02
+        },
+        "sni_multi_cert": {
+          "detail": "app.lab -> CN = app.lab, O = pxlab; b.lab -> CN = b.lab, O = pxlab",
+          "status": "ok",
+          "group": "tls",
+          "title": "Multiple certificates selected by SNI",
+          "seconds": 0.08
+        },
+        "acme_auto_cert": {
+          "status": "unsupported",
+          "detail": "acme.so only serves challenge files; there is no ACME client",
+          "group": "tls",
+          "title": "Automatic certificate via ACME (Pebble)",
+          "seconds": 0
+        },
+        "cache_hit": {
+          "detail": "origin app2#1 -> app2#1; X-Cache: miss -> hit-fresh age=0",
+          "status": "ok",
+          "group": "caching",
+          "title": "Response caching",
+          "seconds": 0.0
+        },
+        "cache_purge": {
+          "detail": "purge -> 200; origin app3#1 -> app1#1",
+          "keepalive_quirk": false,
+          "status": "ok",
+          "group": "caching",
+          "title": "Cache purge",
+          "seconds": 0.01
+        },
+        "cache_stale_on_error": {
+          "detail": "first 200 origin=app2#1; after expiry with origin 503: 200 origin=app2#1 X-Cache=hit-stale",
+          "status": "ok",
+          "group": "caching",
+          "title": "Serve stale on upstream error",
+          "seconds": 2.61
+        },
+        "compress_gzip": {
+          "detail": "Content-Encoding=gzip 387 bytes (65536 uncompressed)",
+          "bytes": 387,
+          "status": "ok",
+          "group": "compression",
+          "title": "gzip compression",
+          "seconds": 0.0
+        },
+        "compress_brotli": {
+          "detail": "Content-Encoding=none 65536 bytes (65536 uncompressed)",
+          "bytes": 65536,
+          "status": "fail",
+          "group": "compression",
+          "title": "Brotli compression",
+          "seconds": 0.0
+        },
+        "compress_zstd": {
+          "status": "unsupported",
+          "detail": "compress.so does gzip and brotli",
+          "group": "compression",
+          "title": "Zstandard compression",
+          "seconds": 0
+        },
+        "xff_headers": {
+          "detail": "XFF=10.77.0.1 Proto=http Host=app.lab:18080 X-Real-IP=10.77.0.1",
+          "status": "ok",
+          "group": "headers",
+          "title": "X-Forwarded-* headers",
+          "seconds": 0.0
+        },
+        "forwarded_rfc7239": {
+          "detail": "Forwarded='for=10.77.0.1;proto=http;host=app.lab:18080'",
+          "status": "ok",
+          "group": "headers",
+          "title": "RFC 7239 Forwarded header",
+          "seconds": 0.0
+        },
+        "header_add_remove": {
+          "detail": "X-Lab-Proxy=ats X-Powered-By=removed Server=ats",
+          "status": "ok",
+          "group": "headers",
+          "title": "Header manipulation",
+          "seconds": 0.0
+        },
+        "request_id": {
+          "detail": "'7ff7b150-fd35-4117-a6bb-ec88f4486b44-489' / '7ff7b150-fd35-4117-a6bb-ec88f4486b44-490'",
+          "status": "ok",
+          "group": "headers",
+          "title": "Request ID generation",
+          "seconds": 0.01
+        },
+        "rate_limit": {
+          "status": "unsupported",
+          "detail": "rate_limit.so limits concurrency per remap, not requests per second per client",
+          "group": "security",
+          "title": "Request rate limiting",
+          "seconds": 0
+        },
+        "connection_limit": {
+          "detail": "codes={200: 3, 429: 9}",
+          "rejected": 9,
+          "status": "ok",
+          "group": "security",
+          "title": "Concurrent connection limit",
+          "seconds": 1.98
+        },
+        "ip_allow_deny": {
+          "detail": "/allowed=200 /denied=403",
+          "status": "ok",
+          "group": "security",
+          "title": "IP allow / deny lists",
+          "seconds": 0.0
+        },
+        "basic_auth": {
+          "detail": "no creds=401 (None) creds=200",
+          "status": "ok",
+          "group": "security",
+          "title": "HTTP basic authentication",
+          "seconds": 0.01
+        },
+        "jwt_auth": {
+          "status": "unsupported",
+          "detail": "no JWT validation plugin (uri_signing.so signs URLs; tslua could do it)",
+          "group": "security",
+          "title": "JWT validation (HS256)",
+          "seconds": 0
+        },
+        "forward_auth": {
+          "status": "unsupported",
+          "detail": "authproxy.so forwards the ORIGINAL path to the authorizer, which does not fit the lab's /auth service",
+          "group": "security",
+          "title": "External authorization (forward auth / auth_request / ext_authz)",
+          "seconds": 0
+        },
+        "cors": {
+          "detail": "204 ACAO=* methods=GET, POST, PUT, DELETE, OPTIONS",
+          "status": "ok",
+          "group": "security",
+          "title": "CORS preflight answered by the proxy",
+          "seconds": 0.0
+        },
+        "security_headers": {
+          "detail": "{'strict-transport-security': 'max-age=31536000; includeSubDomains', 'x-content-type-options': 'nosniff', 'x-frame-options': 'DENY', 'referrer-policy': 'strict-origin-when-cross-origin'}",
+          "status": "ok",
+          "group": "security",
+          "title": "Security response headers",
+          "seconds": 0.0
+        },
+        "body_size_limit": {
+          "detail": "2MiB=413 100KiB=200",
+          "status": "ok",
+          "group": "security",
+          "title": "Request body size limit",
+          "seconds": 0.01
+        },
+        "upstream_timeout": {
+          "detail": "504 after 2.60s",
+          "seconds": 2.6,
+          "status": "ok",
+          "group": "security",
+          "title": "Upstream read timeout"
+        },
+        "fault_injection": {
+          "detail": "503 share=0.19 codes={200: 81, 503: 19}",
+          "share": 0.19,
+          "status": "ok",
+          "group": "security",
+          "title": "Fault injection",
+          "seconds": 0.23
+        },
+        "bandwidth_limit": {
+          "status": "unsupported",
+          "detail": "fq_pacing.so needs the kernel fq qdisc (SO_MAX_PACING_RATE) on the interface, which a container does not have",
+          "group": "security",
+          "title": "Bandwidth limiting",
+          "seconds": 0
+        },
+        "static_files": {
+          "detail": "404 '<HTML>\\n<HEAD>\\n<TITLE>Error</TITLE>\\n</HEAD>\\n\\n<BODY BGCOLOR=\"w' x-instance=None",
+          "status": "fail",
+          "group": "operations",
+          "title": "Static file serving",
+          "seconds": 0.0
+        },
+        "custom_error_page": {
+          "status": "unsupported",
+          "detail": "origin error bodies pass through; body_factory only styles ATS-generated errors",
+          "group": "operations",
+          "title": "Custom error page",
+          "seconds": 0
+        },
+        "hot_reload": {
+          "detail": "reload rc=0 ''; then 200",
+          "status": "ok",
+          "group": "operations",
+          "title": "Configuration reload without restart",
+          "seconds": 0.1
+        },
+        "access_log_json": {
+          "detail": "no JSON access line in: ''",
+          "status": "fail",
+          "group": "operations",
+          "title": "Structured (JSON) access log",
+          "seconds": 1.6
+        },
+        "metrics_prometheus": {
+          "status": "unsupported",
+          "detail": "stats_over_http.so exposes JSON at /_stats; Prometheus needs an exporter",
+          "group": "operations",
+          "title": "Prometheus metrics",
+          "seconds": 0
+        },
+        "admin_api": {
+          "detail": "rc=0 'proxy.process.http.current_active_client_connections 2'",
+          "status": "ok",
+          "group": "operations",
+          "title": "Admin / stats / runtime API",
+          "seconds": 0.09
+        },
+        "tracing_otel": {
+          "status": "unsupported",
+          "detail": "no OpenTelemetry",
+          "group": "operations",
+          "title": "Distributed tracing (OpenTelemetry -> Jaeger)",
+          "seconds": 0
+        },
+        "docker_label_discovery": {
+          "status": "unsupported",
+          "detail": "no Docker provider",
+          "group": "operations",
+          "title": "Service discovery from Docker labels",
+          "seconds": 0
+        }
+      },
+      "summary": {
+        "ok": 38,
+        "fail": 7,
+        "error": 1,
+        "unsupported": 23
+      },
+      "_seconds": 31.8
+    }
+  },
+  "finished": "2026-09-13T19:04:20+00:00"
+}

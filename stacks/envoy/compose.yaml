@@ -1,0 +1,39 @@
+# Envoy (official image). Bootstrap envoy.yaml + file-based xDS (lds.yaml / cds.yaml / rds.yaml, watched directory).
+name: pxlab-envoy
+services:
+  proxy:
+    image: envoyproxy/envoy:v1.39-latest
+    container_name: pxlab-envoy
+    cpuset: "0-3"
+    command: ["envoy", "-c", "/etc/envoy/envoy.yaml", "--concurrency", "4", "--log-level", "warn", "--log-format", "%L %v"]
+    volumes:
+      - ./:/etc/envoy:ro
+      - ../../shared/certs:/certs:ro
+      - ../../shared/auth:/auth:ro
+      - ../../shared/static:/static:ro
+    ports:
+      - "18080:8080"
+      - "18443:8443"
+      - "18443:8443/udp"
+      - "18444:8444"
+      - "18445:8445"
+      - "18082:8082"
+      - "19000:9000"
+      - "19001:9001/udp"
+      - "19100:9100"
+      - "19101:9101"
+    ulimits:
+      nofile: { soft: 1048576, hard: 1048576 }
+    networks:
+      pxlab:
+        aliases: [proxy, app.lab, a.lab, b.lab, acme.lab, redirect.lab]
+    healthcheck:
+      # no curl in the image: bash /dev/tcp against the admin endpoint (HTTP/1.1: the admin server rejects HTTP/1.0)
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/9101; printf 'GET /ready HTTP/1.1\r\nHost: admin\r\nConnection: close\r\n\r\n' >&3; timeout 3 cat <&3 | grep -q LIVE"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+networks:
+  pxlab:
+    external: true
+    name: pxlab

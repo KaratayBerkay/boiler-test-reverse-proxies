@@ -1,0 +1,76 @@
+# Varnish Cache 8 (official image) + hitch (TLS termination, PROXY v2 to Varnish) + varnishncsa (JSON access log) + Prometheus exporter.
+name: pxlab-varnish
+services:
+  proxy:
+    image: varnish:8.0
+    container_name: pxlab-varnish
+    cpuset: "0-3"
+    command: ["varnishd", "-F", "-n", "/var/lib/varnish/pxlab", "-f", "/etc/varnish/default.vcl",
+              "-a", "http=:8080,HTTP", "-a", "http80=:80,HTTP", "-a", "proxy=:6086,PROXY", "-a", "pp=:8082,PROXY",
+              "-p", "feature=+http2", "-p", "http_gzip_support=on", "-p", "thread_pools=2", "-p", "thread_pool_min=200", "-p", "thread_pool_max=4000",
+              "-p", "workspace_client=128k", "-p", "http_req_size=64k", "-s", "malloc,512m", "-t", "120"]
+    volumes:
+      - ./default.vcl:/etc/varnish/default.vcl:ro
+      - ../../shared/static:/static:ro
+      - varnish-vsm:/var/lib/varnish
+    ports:
+      - "18080:8080"
+      - "18082:8082"
+    ulimits:
+      nofile: { soft: 1048576, hard: 1048576 }
+      memlock: { soft: -1, hard: -1 }
+    sysctls:
+      net.ipv4.ip_unprivileged_port_start: 0
+    networks:
+      pxlab:
+        aliases: [proxy, app.lab, a.lab, b.lab, acme.lab, redirect.lab, varnish]
+    healthcheck:
+      test: ["CMD", "varnishadm", "-n", "/var/lib/varnish/pxlab", "status"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+  hitch:
+    image: hitch:latest
+    container_name: pxlab-hitch
+    cpuset: "0-3"
+    volumes:
+      - ./hitch.conf:/etc/hitch/hitch.conf:ro
+      - ../../shared/certs:/certs:ro
+    ports:
+      - "18443:8443"
+      - "18444:8444"
+    networks: [pxlab]
+    depends_on:
+      proxy:
+        condition: service_healthy
+  log:                                    # varnishncsa reads the shared memory log and prints JSON lines (docker logs pxlab-varnish-log)
+    image: varnish:8.0
+    container_name: pxlab-varnish-log
+    command: ["varnishncsa", "-n", "/var/lib/varnish/pxlab", "-F",
+              "{\"time\":\"%{%Y-%m-%dT%H:%M:%S%z}t\",\"remote_addr\":\"%h\",\"method\":\"%m\",\"uri\":\"%U%q\",\"host\":\"%{Host}i\",\"status\":%s,\"bytes\":%b,\"duration_s\":%{Varnish:time_firstbyte}x,\"handling\":\"%{Varnish:handling}x\",\"request_id\":\"%{X-Request-ID}i\",\"ua\":\"%{User-Agent}i\"}"]
+    cpuset: "0-3"
+    volumes:
+      - varnish-vsm:/var/lib/varnish
+    networks: [pxlab]
+    depends_on:
+      proxy:
+        condition: service_healthy
+  exporter:
+    build: ./exporter
+    image: pxlab-varnish-exporter:latest
+    container_name: pxlab-varnish-exporter
+    command: ["-web.listen-address", ":9131", "-n", "/var/lib/varnish/pxlab"]
+    cpuset: "0-3"
+    volumes:
+      - varnish-vsm:/var/lib/varnish
+    ports: ["19100:9131"]
+    networks: [pxlab]
+    depends_on:
+      proxy:
+        condition: service_healthy
+volumes:
+  varnish-vsm:
+networks:
+  pxlab:
+    external: true
+    name: pxlab

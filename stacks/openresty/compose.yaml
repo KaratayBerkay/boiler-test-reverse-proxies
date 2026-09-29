@@ -1,0 +1,44 @@
+# OpenResty 1.27 (nginx + LuaJIT, custom image with opm packages - see Dockerfile).
+name: pxlab-openresty
+services:
+  proxy:
+    build: .
+    image: pxlab-openresty:latest
+    container_name: pxlab-openresty
+    cpuset: "0-3"
+    command: ["openresty", "-c", "/etc/openresty/nginx.conf", "-g", "daemon off;"]
+    environment:
+      ACME_EAGER: "1"                    # "0" = only lazy issuance on the first TLS handshake
+    volumes:
+      - ./:/etc/openresty:ro
+      - ../../shared/certs:/certs:ro
+      - ../../shared/auth:/auth:ro
+      - ../../shared/static:/static:ro
+      - openresty-cache:/var/cache/nginx
+    ports:
+      - "18080:8080"
+      - "18443:8443"
+      - "18443:8443/udp"
+      - "18444:8444"
+      - "18445:8445"
+      - "18082:8082"
+      - "19000:9000"
+      - "19001:9001/udp"
+      - "19100:9100"
+      - "19101:9101"
+    ulimits:
+      nofile: { soft: 1048576, hard: 1048576 }
+    networks:
+      pxlab:
+        aliases: [proxy, app.lab, a.lab, b.lab, acme.lab, redirect.lab]
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:9101/healthz"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+volumes:
+  openresty-cache:
+networks:
+  pxlab:
+    external: true
+    name: pxlab

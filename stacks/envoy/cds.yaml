@@ -1,0 +1,258 @@
+# pxlab Envoy - CLUSTERS (file-based CDS). Bump version_info after editing; Envoy applies the change without restart.
+version_info: "2"
+resources:
+  # ------------------------------------------------------------------ the default pool: app1/2/3, active + passive health
+  - "@type": type.googleapis.com/envoy.config.cluster.v3.Cluster
+    name: app
+    type: STRICT_DNS
+    dns_lookup_family: V4_ONLY
+    lb_policy: ROUND_ROBIN
+    connect_timeout: 3s
+    circuit_breakers:
+      thresholds:
+        - { priority: DEFAULT, max_connections: 50000, max_pending_requests: 50000, max_requests: 50000, max_retries: 1000 }
+    health_checks:
+      - timeout: 1s
+        interval: 2s
+        no_traffic_interval: 2s              # default 60 s: an idle cluster is only re-checked once a minute
+        unhealthy_threshold: 2
+        healthy_threshold: 2
+        http_health_check: { path: /healthz }
+    typed_extension_protocol_options:
+      envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
+        "@type": type.googleapis.com/envoy.extensions.upstreams.http.v3.HttpProtocolOptions
+        common_http_protocol_options: { idle_timeout: 90s }
+        explicit_http_config: { http_protocol_options: {} }
+    load_assignment:
+      cluster_name: app
+      endpoints:
+        - lb_endpoints:
+            - endpoint: { address: { socket_address: { address: app1, port_value: 8080 } } }
+            - endpoint: { address: { socket_address: { address: app2, port_value: 8080 } } }
+            - endpoint: { address: { socket_address: { address: app3, port_value: 8080 } } }
+  - "@type": type.googleapis.com/envoy.config.cluster.v3.Cluster
+    name: b
+    type: STRICT_DNS
+    dns_lookup_family: V4_ONLY
+    connect_timeout: 3s
+    load_assignment:
+      cluster_name: b
+      endpoints: [{ lb_endpoints: [{ endpoint: { address: { socket_address: { address: b1, port_value: 8080 } } } }] }]
+  - "@type": type.googleapis.com/envoy.config.cluster.v3.Cluster
+    name: canary
+    type: STRICT_DNS
+    dns_lookup_family: V4_ONLY
+    connect_timeout: 3s
+    load_assignment:
+      cluster_name: canary
+      endpoints: [{ lb_endpoints: [{ endpoint: { address: { socket_address: { address: canary, port_value: 8080 } } } }] }]
+  - "@type": type.googleapis.com/envoy.config.cluster.v3.Cluster
+    name: shadow
+    type: STRICT_DNS
+    dns_lookup_family: V4_ONLY
+    connect_timeout: 3s
+    load_assignment:
+      cluster_name: shadow
+      endpoints: [{ lb_endpoints: [{ endpoint: { address: { socket_address: { address: shadow, port_value: 8080 } } } }] }]
+  - "@type": type.googleapis.com/envoy.config.cluster.v3.Cluster
+    name: auth                                             # ext_authz target (app1 /auth)
+    type: STRICT_DNS
+    dns_lookup_family: V4_ONLY
+    connect_timeout: 2s
+    load_assignment:
+      cluster_name: auth
+      endpoints: [{ lb_endpoints: [{ endpoint: { address: { socket_address: { address: app1, port_value: 8080 } } } }] }]
+  # ------------------------------------------------------------------ load-balancing variants
+  - "@type": type.googleapis.com/envoy.config.cluster.v3.Cluster
+    name: weighted
+    type: STRICT_DNS
+    dns_lookup_family: V4_ONLY
+    lb_policy: ROUND_ROBIN
+    connect_timeout: 3s
+    load_assignment:
+      cluster_name: weighted
+      endpoints:
+        - lb_endpoints:
+            - { endpoint: { address: { socket_address: { address: app1, port_value: 8080 } } }, load_balancing_weight: 3 }
+            - { endpoint: { address: { socket_address: { address: app2, port_value: 8080 } } }, load_balancing_weight: 1 }
+  - "@type": type.googleapis.com/envoy.config.cluster.v3.Cluster
+    name: leastconn
+    type: STRICT_DNS
+    dns_lookup_family: V4_ONLY
+    lb_policy: LEAST_REQUEST
+    least_request_lb_config: { choice_count: 3 }
+    connect_timeout: 3s
+    load_assignment:
+      cluster_name: leastconn
+      endpoints:
+        - lb_endpoints:
+            - endpoint: { address: { socket_address: { address: app1, port_value: 8080 } } }
+            - endpoint: { address: { socket_address: { address: app2, port_value: 8080 } } }
+            - endpoint: { address: { socket_address: { address: slow, port_value: 8080 } } }
+  - "@type": type.googleapis.com/envoy.config.cluster.v3.Cluster
+    name: hash                                             # consistent hashing (ring hash); the route's hash_policy picks the key
+    type: STRICT_DNS
+    dns_lookup_family: V4_ONLY
+    lb_policy: RING_HASH
+    ring_hash_lb_config: { minimum_ring_size: 1024 }
+    connect_timeout: 3s
+    load_assignment:
+      cluster_name: hash
+      endpoints:
+        - lb_endpoints:
+            - endpoint: { address: { socket_address: { address: app1, port_value: 8080 } } }
+            - endpoint: { address: { socket_address: { address: app2, port_value: 8080 } } }
+            - endpoint: { address: { socket_address: { address: app3, port_value: 8080 } } }
+  - "@type": type.googleapis.com/envoy.config.cluster.v3.Cluster
+    name: retry                                            # includes a dead member; the route's retry policy hides it
+    type: STRICT_DNS
+    dns_lookup_family: V4_ONLY
+    connect_timeout: 3s
+    load_assignment:
+      cluster_name: retry
+      endpoints:
+        - lb_endpoints:
+            - endpoint: { address: { socket_address: { address: app1, port_value: 8080 } } }
+            - endpoint: { address: { socket_address: { address: app2, port_value: 8080 } } }
+            - endpoint: { address: { socket_address: { address: app3, port_value: 8099 } } }
+  - "@type": type.googleapis.com/envoy.config.cluster.v3.Cluster
+    name: cb                                               # outlier detection: 3 consecutive 5xx -> ejected for 10 s
+    type: STRICT_DNS
+    dns_lookup_family: V4_ONLY
+    connect_timeout: 3s
+    outlier_detection:
+      consecutive_5xx: 3
+      interval: 1s
+      base_ejection_time: 10s
+      max_ejection_percent: 100
+      enforcing_consecutive_5xx: 100
+    load_assignment:
+      cluster_name: cb
+      endpoints:
+        - lb_endpoints:
+            - endpoint: { address: { socket_address: { address: app1, port_value: 8080 } } }
+            - endpoint: { address: { socket_address: { address: app2, port_value: 8080 } } }
+            - endpoint: { address: { socket_address: { address: flaky, port_value: 8080 } } }
+  - "@type": type.googleapis.com/envoy.config.cluster.v3.Cluster
+    name: health                                           # active health checks every second
+    type: STRICT_DNS
+    dns_lookup_family: V4_ONLY
+    connect_timeout: 3s
+    health_checks:
+      - timeout: 1s
+        interval: 1s
+        no_traffic_interval: 1s              # health.lab only sees traffic during the probe: keep checking while idle
+        unhealthy_threshold: 2
+        healthy_threshold: 2
+        http_health_check: { path: /healthz }
+    load_assignment:
+      cluster_name: health
+      endpoints:
+        - lb_endpoints:
+            - endpoint: { address: { socket_address: { address: app1, port_value: 8080 } } }
+            - endpoint: { address: { socket_address: { address: app2, port_value: 8080 } } }
+            - endpoint: { address: { socket_address: { address: app3, port_value: 8080 } } }
+  # ------------------------------------------------------------------ upstream protocol variants
+  - "@type": type.googleapis.com/envoy.config.cluster.v3.Cluster
+    name: grpc                                             # gRPC: HTTP/2 (h2c) to app1:9090
+    type: STRICT_DNS
+    dns_lookup_family: V4_ONLY
+    connect_timeout: 3s
+    typed_extension_protocol_options:
+      envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
+        "@type": type.googleapis.com/envoy.extensions.upstreams.http.v3.HttpProtocolOptions
+        explicit_http_config: { http2_protocol_options: {} }
+    load_assignment:
+      cluster_name: grpc
+      endpoints: [{ lb_endpoints: [{ endpoint: { address: { socket_address: { address: app1, port_value: 9090 } } } }] }]
+  - "@type": type.googleapis.com/envoy.config.cluster.v3.Cluster
+    name: app_h2                                           # HTTP/2 (h2c) to a normal HTTP upstream
+    type: STRICT_DNS
+    dns_lookup_family: V4_ONLY
+    connect_timeout: 3s
+    typed_extension_protocol_options:
+      envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
+        "@type": type.googleapis.com/envoy.extensions.upstreams.http.v3.HttpProtocolOptions
+        explicit_http_config: { http2_protocol_options: {} }
+    load_assignment:
+      cluster_name: app_h2
+      endpoints: [{ lb_endpoints: [{ endpoint: { address: { socket_address: { address: app1, port_value: 8080 } } } }] }]
+  - "@type": type.googleapis.com/envoy.config.cluster.v3.Cluster
+    name: app_tls                                          # TLS re-encryption verified against the lab CA (SNI backend.lab)
+    type: STRICT_DNS
+    dns_lookup_family: V4_ONLY
+    connect_timeout: 3s
+    transport_socket:
+      name: envoy.transport_sockets.tls
+      typed_config:
+        "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.UpstreamTlsContext
+        sni: backend.lab
+        common_tls_context:
+          alpn_protocols: [http/1.1]
+          validation_context:
+            trusted_ca: { filename: /certs/ca.crt }
+            match_typed_subject_alt_names:
+              - { san_type: DNS, matcher: { exact: backend.lab } }
+    load_assignment:
+      cluster_name: app_tls
+      endpoints: [{ lb_endpoints: [{ endpoint: { address: { socket_address: { address: app1, port_value: 8443 } } } }] }]
+  - "@type": type.googleapis.com/envoy.config.cluster.v3.Cluster
+    name: app_pp                                           # PROXY protocol v2 towards the upstream
+    type: STRICT_DNS
+    dns_lookup_family: V4_ONLY
+    connect_timeout: 3s
+    transport_socket:
+      name: envoy.transport_sockets.upstream_proxy_protocol
+      typed_config:
+        "@type": type.googleapis.com/envoy.extensions.transport_sockets.proxy_protocol.v3.ProxyProtocolUpstreamTransport
+        config: { version: V2 }
+        transport_socket:
+          name: envoy.transport_sockets.raw_buffer
+          typed_config: { "@type": type.googleapis.com/envoy.extensions.transport_sockets.raw_buffer.v3.RawBuffer }
+    load_assignment:
+      cluster_name: app_pp
+      endpoints: [{ lb_endpoints: [{ endpoint: { address: { socket_address: { address: app1, port_value: 8081 } } } }] }]
+  - "@type": type.googleapis.com/envoy.config.cluster.v3.Cluster
+    name: app1_tcp                                         # L4 targets (tcp_proxy / TLS passthrough / UDP)
+    type: STRICT_DNS
+    dns_lookup_family: V4_ONLY
+    connect_timeout: 3s
+    load_assignment:
+      cluster_name: app1_tcp
+      endpoints: [{ lb_endpoints: [{ endpoint: { address: { socket_address: { address: app1, port_value: 8080 } } } }] }]
+  - "@type": type.googleapis.com/envoy.config.cluster.v3.Cluster
+    name: app1_tls_raw
+    type: STRICT_DNS
+    dns_lookup_family: V4_ONLY
+    connect_timeout: 3s
+    load_assignment:
+      cluster_name: app1_tls_raw
+      endpoints: [{ lb_endpoints: [{ endpoint: { address: { socket_address: { address: app1, port_value: 8443 } } } }] }]
+  - "@type": type.googleapis.com/envoy.config.cluster.v3.Cluster
+    name: app1_udp
+    type: STRICT_DNS
+    dns_lookup_family: V4_ONLY
+    connect_timeout: 3s
+    load_assignment:
+      cluster_name: app1_udp
+      endpoints: [{ lb_endpoints: [{ endpoint: { address: { socket_address: { address: app1, port_value: 9002 } } } }] }]
+  # ------------------------------------------------------------------ infrastructure
+  - "@type": type.googleapis.com/envoy.config.cluster.v3.Cluster
+    name: jaeger                                           # OTLP/gRPC trace exporter target
+    type: STRICT_DNS
+    dns_lookup_family: V4_ONLY
+    connect_timeout: 2s
+    typed_extension_protocol_options:
+      envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
+        "@type": type.googleapis.com/envoy.extensions.upstreams.http.v3.HttpProtocolOptions
+        explicit_http_config: { http2_protocol_options: {} }
+    load_assignment:
+      cluster_name: jaeger
+      endpoints: [{ lb_endpoints: [{ endpoint: { address: { socket_address: { address: jaeger, port_value: 4317 } } } }] }]
+  - "@type": type.googleapis.com/envoy.config.cluster.v3.Cluster
+    name: admin                                            # the admin endpoint, re-exposed as /metrics on :9100
+    type: STATIC
+    connect_timeout: 1s
+    load_assignment:
+      cluster_name: admin
+      endpoints: [{ lb_endpoints: [{ endpoint: { address: { socket_address: { address: 127.0.0.1, port_value: 9101 } } } }] }]

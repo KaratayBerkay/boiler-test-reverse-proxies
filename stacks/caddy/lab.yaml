@@ -1,0 +1,33 @@
+display: Caddy 2
+image: pxlab-caddy:latest
+build: true
+family: go
+category: web server / reverse proxy (Go) with automatic HTTPS; extended with xcaddy plugins
+container: pxlab-caddy
+version_cmd: [caddy, version]
+reload_cmd: [caddy, reload, --config, /etc/caddy/Caddyfile, --adapter, caddyfile]
+reload_kind: api (caddy reload pushes the config through the admin API; zero-downtime, listeners kept)
+admin: { kind: http, path: /config/, expect: "apps" }
+metrics_path: /metrics
+tracing_service: caddy
+cache_header: Cache-Status
+features: { health_settle_s: 5, purge: { method: PURGE } }
+unsupported:
+  lb_mirror: "no request mirroring / shadowing in reverse_proxy"
+  connection_limit: "no per-client concurrency limit (caddy-ratelimit is a request-rate limiter only)"
+  fault_injection: "no fault-injection primitive (a CEL matcher cannot draw random numbers); needs a plugin"
+  bandwidth_limit: "no bandwidth/throughput limiting"
+  docker_label_discovery: "caddy-docker-proxy (lucaslorentz) is a separate distribution that generates the Caddyfile from labels"
+notes: >-
+  Caddy 2 built with xcaddy: caddy-ratelimit, caddy-l4 (TCP/UDP/SNI passthrough), caddy-jwt, caddy-brotli and the Souin
+  cache-handler (Caddy has no built-in cache). Automatic HTTPS stays on for acme.lab only (Pebble issuer, HTTP-01 on :80);
+  every other site carries explicit certificates because Caddy would otherwise try to get Let's Encrypt certs for *.lab.
+  h1/h2/h2c/h3 are enabled on the plain and TLS listeners; PROXY protocol is accepted on :8082 through a listener wrapper.
+docs:
+  - https://hub.docker.com/_/caddy
+  - https://caddyserver.com/docs/caddyfile/directives/reverse_proxy
+  - https://caddyserver.com/docs/caddyfile/options
+  - https://github.com/mholt/caddy-ratelimit
+  - https://github.com/mholt/caddy-l4
+  - https://github.com/caddyserver/cache-handler
+  - https://github.com/ggicci/caddy-jwt

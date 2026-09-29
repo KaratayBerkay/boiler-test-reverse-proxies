@@ -1,0 +1,1581 @@
+{
+  "stack": "pingora",
+  "display": "Pingora (Rust, custom)",
+  "image": "pxlab-pingora:latest",
+  "family": "rust",
+  "category": "a proxy written in Rust on Cloudflare's Pingora framework - routing and policies as code",
+  "run_id": "20260913-233411-8ce4c2",
+  "started": "2026-09-13T20:07:40+00:00",
+  "notes": "A ~700-line Rust proxy on Pingora 0.9 (Cloudflare's framework): ProxyHttp hooks implement host/path routing, round-robin / weighted / ketama hashing / cookie stickiness, HTTP health checks, retries on connect failure, outlier ejection, h2c and verified-TLS upstreams, gRPC, rate and concurrency limits (pingora-limits), JWT (jsonwebtoken), basic auth, IP lists, fault injection, per-route timeouts, response cache (pingora-cache MemCache), compression, mTLS, SNI certificate callback, a static file, a custom error page, JSON access log, Prometheus metrics, a status API and a raw TCP proxy app. Zero-downtime upgrade via the framework's socket hand-off. What is missing is missing from the code, not from the framework's limits (mostly).",
+  "docs": [
+    "https://github.com/cloudflare/pingora",
+    "https://github.com/cloudflare/pingora/blob/main/docs/user_guide/index.md",
+    "https://docs.rs/pingora-proxy/latest/pingora_proxy/trait.ProxyHttp.html",
+    "https://docs.rs/pingora-load-balancing/latest/",
+    "https://docs.rs/pingora-cache/latest/"
+  ],
+  "image_size": "180 MB",
+  "startup_s": 3.3,
+  "version": "sh: 1: Syntax error: \"(\" unexpected",
+  "containers": [
+    "pxlab-pingora"
+  ],
+  "unsupported": {
+    "lb_least_conn": "pingora-load-balancing ships round-robin / random / consistent-hash selection; least-connections would be a custom BackendSelection",
+    "lb_mirror": "no mirroring in the framework (would be a second upstream request written by hand)",
+    "proxy_protocol_upstream": "no PROXY protocol towards upstreams",
+    "proxy_protocol_accept": "no PROXY protocol on listeners",
+    "udp_l4": "Pingora is TCP/HTTP only",
+    "tls_passthrough_sni": "the L4 app in this proxy copies bytes; SNI parsing for passthrough is not implemented",
+    "http3": "no HTTP/3 in Pingora",
+    "acme_auto_cert": "no ACME client (certificates come from files / callbacks)",
+    "cache_purge": "pingora-cache serves PURGE only for storages implementing purge; MemCache does in principle but the lab keeps it out of scope",
+    "cache_stale_on_error": "stale-if-error is wired through should_serve_stale(); the in-memory cache expires objects before the lab's 2 s window",
+    "compress_brotli": "pingora's compression module in this build negotiates gzip/zstd (brotli support is feature-gated)",
+    "forward_auth": "no built-in subrequest to an authorizer (would be a hand-written upstream call)",
+    "bandwidth_limit": "no built-in bandwidth limiting (body filters are synchronous)",
+    "tracing_otel": "no OpenTelemetry integration in this binary",
+    "docker_label_discovery": "no Docker provider"
+  },
+  "phases": {
+    "capabilities": {
+      "ready_s": 0.1,
+      "probes": {
+        "route_host": {
+          "detail": "a.lab -> app2 (X-Route=a), b.lab -> b1",
+          "status": "ok",
+          "group": "routing",
+          "title": "Host-based routing",
+          "seconds": 0.0
+        },
+        "route_path_prefix": {
+          "detail": "upstream path=/hello query=x=1 X-Route=api",
+          "status": "ok",
+          "group": "routing",
+          "title": "Path prefix route + strip prefix",
+          "seconds": 0.0
+        },
+        "route_path_regex": {
+          "detail": "path=/v2/things X-Route=versioned",
+          "status": "ok",
+          "group": "routing",
+          "title": "Regex path route",
+          "seconds": 0.0
+        },
+        "route_rewrite": {
+          "detail": "upstream path=/new/thing X-Route=rewritten",
+          "status": "ok",
+          "group": "routing",
+          "title": "URL rewrite (regex capture)",
+          "seconds": 0.0
+        },
+        "route_redirect": {
+          "detail": "301 Location=/landing",
+          "status": "ok",
+          "group": "routing",
+          "title": "Redirect issued by the proxy",
+          "seconds": 0.0
+        },
+        "route_header": {
+          "detail": "instance=canary",
+          "status": "ok",
+          "group": "routing",
+          "title": "Header-based routing",
+          "seconds": 0.0
+        },
+        "route_query": {
+          "detail": "instance=canary",
+          "status": "ok",
+          "group": "routing",
+          "title": "Query-parameter routing",
+          "seconds": 0.0
+        },
+        "route_method": {
+          "detail": "DELETE -> 405 (x-instance=None)",
+          "status": "ok",
+          "group": "routing",
+          "title": "Method-based rule",
+          "seconds": 0.0
+        },
+        "redirect_https": {
+          "detail": "301 Location=https://redirect.lab/x?q=1",
+          "status": "ok",
+          "group": "routing",
+          "title": "HTTP -> HTTPS redirect",
+          "seconds": 0.0
+        },
+        "lb_round_robin": {
+          "detail": {
+            "app3": 10,
+            "app1": 10,
+            "app2": 10
+          },
+          "status": "ok",
+          "group": "load-balancing",
+          "title": "Round-robin over 3 backends",
+          "seconds": 0.04
+        },
+        "lb_weighted": {
+          "detail": "app1 share=0.75 {'app1': 75, 'app2': 25}",
+          "share": 0.75,
+          "status": "ok",
+          "group": "load-balancing",
+          "title": "Weighted round-robin (3:1)",
+          "seconds": 0.19
+        },
+        "lb_least_conn": {
+          "status": "unsupported",
+          "detail": "pingora-load-balancing ships round-robin / random / consistent-hash selection; least-connections would be a custom BackendSelection",
+          "group": "load-balancing",
+          "title": "Least-connections",
+          "seconds": 0
+        },
+        "lb_hash_header": {
+          "detail": "u1 -> {'app1': 20}; 10 users -> {'app2': 15, 'app1': 6, 'app3': 9}",
+          "status": "ok",
+          "group": "load-balancing",
+          "title": "Consistent hashing on a header",
+          "seconds": 0.1
+        },
+        "lb_sticky_cookie": {
+          "detail": "cookie='lab_sticky=app3; Path=/; HttpOnly' first=app3 then={'app3': 12}",
+          "status": "ok",
+          "group": "load-balancing",
+          "title": "Cookie stickiness",
+          "seconds": 0.03
+        },
+        "lb_retry_dead_member": {
+          "detail": "codes={200: 30} max_ms=3",
+          "max_ms": 3.5,
+          "status": "ok",
+          "group": "load-balancing",
+          "title": "Retry on connect failure",
+          "seconds": 0.08
+        },
+        "lb_outlier_ejection": {
+          "detail": "first20={200: 17, 500: 3} last20={200: 40} flaky hits in last 20=0",
+          "errors_first20": 3,
+          "errors_last20": -20,
+          "flaky_hits_last20": 0,
+          "status": "ok",
+          "group": "load-balancing",
+          "title": "Passive health / outlier ejection",
+          "seconds": 1.62
+        },
+        "lb_active_health": {
+          "detail": "ejected after 2.1s; while unhealthy: {'app1': 15, 'app2': 15} app3 hits=0; re-admitted after 2.1s",
+          "eject_s": 2.1,
+          "readmit_s": 2.1,
+          "status": "ok",
+          "group": "load-balancing",
+          "title": "Active health checks",
+          "seconds": 4.49
+        },
+        "lb_canary_split": {
+          "detail": "canary share=0.100 {'app1': 60, 'app2': 60, 'app3': 60, 'canary': 20}",
+          "share": 0.1,
+          "status": "ok",
+          "group": "load-balancing",
+          "title": "Weighted traffic split (canary)",
+          "seconds": 0.47
+        },
+        "lb_mirror": {
+          "status": "unsupported",
+          "detail": "no mirroring in the framework (would be a second upstream request written by hand)",
+          "group": "load-balancing",
+          "title": "Request mirroring / shadowing",
+          "seconds": 0
+        },
+        "lb_upstream_keepalive": {
+          "detail": "new upstream connections for 60 requests: {'app2': 1, 'app1': 1, 'app3': 2}",
+          "upstream_connections": 4,
+          "status": "ok",
+          "group": "load-balancing",
+          "title": "Upstream connection pooling",
+          "seconds": 0.32
+        },
+        "http2_tls": {
+          "detail": "HTTP/2 200 upstream proto=HTTP/1.1",
+          "status": "ok",
+          "group": "protocols",
+          "title": "HTTP/2 (TLS, ALPN)",
+          "seconds": 0.01
+        },
+        "h2c_frontend": {
+          "detail": "status=200 body=b'{\\n \"instance\": \"app2\",\\n \"pool\": \"app\",\\n '",
+          "status": "ok",
+          "group": "protocols",
+          "title": "HTTP/2 cleartext (prior knowledge) on :8080",
+          "seconds": 0.0
+        },
+        "http3": {
+          "status": "unsupported",
+          "detail": "no HTTP/3 in Pingora",
+          "group": "protocols",
+          "title": "HTTP/3 (QUIC)",
+          "seconds": 0
+        },
+        "websocket": {
+          "detail": "text echo='hello' binary 4096=4096 instance=app2",
+          "status": "ok",
+          "group": "protocols",
+          "title": "WebSocket proxying",
+          "seconds": 0.03
+        },
+        "sse_streaming": {
+          "detail": "events=5 first=0.0s total=1.20s",
+          "status": "ok",
+          "group": "protocols",
+          "title": "Server-sent events (no response buffering)",
+          "seconds": 1.2
+        },
+        "grpc": {
+          "detail": "tls:8443: SERVING",
+          "via": "tls:8443",
+          "status": "ok",
+          "group": "protocols",
+          "title": "gRPC proxying (h2 -> upstream h2c :9090)",
+          "seconds": 0.1
+        },
+        "h2_upstream": {
+          "detail": "upstream proto=HTTP/2.0",
+          "status": "ok",
+          "group": "protocols",
+          "title": "HTTP/2 to the upstream (h2c)",
+          "seconds": 0.0
+        },
+        "tls_upstream": {
+          "detail": "listener=tls tls={'version': 'TLS1.3', 'sni': 'backend.lab', 'alpn': 'http/1.1'}",
+          "status": "ok",
+          "group": "protocols",
+          "title": "TLS re-encryption to the upstream (verified)",
+          "seconds": 0.0
+        },
+        "proxy_protocol_upstream": {
+          "status": "unsupported",
+          "detail": "no PROXY protocol towards upstreams",
+          "group": "protocols",
+          "title": "PROXY protocol v2 to the upstream",
+          "seconds": 0
+        },
+        "proxy_protocol_accept": {
+          "status": "unsupported",
+          "detail": "no PROXY protocol on listeners",
+          "group": "protocols",
+          "title": "Accept PROXY protocol from clients (:8082)",
+          "seconds": 0
+        },
+        "tcp_l4": {
+          "detail": "instance=app1 remote_addr=10.77.0.2:53200 headers=['Connection']",
+          "status": "ok",
+          "group": "protocols",
+          "title": "TCP (L4) proxying",
+          "seconds": 0.0
+        },
+        "udp_l4": {
+          "status": "unsupported",
+          "detail": "Pingora is TCP/HTTP only",
+          "group": "protocols",
+          "title": "UDP proxying",
+          "seconds": 0
+        },
+        "tls_passthrough_sni": {
+          "status": "unsupported",
+          "detail": "the L4 app in this proxy copies bytes; SNI parsing for passthrough is not implemented",
+          "group": "protocols",
+          "title": "TLS passthrough by SNI (L4)",
+          "seconds": 0
+        },
+        "tls_termination": {
+          "detail": "200 cert=CN = app.lab, O = pxlab TLSv1.3 X-Forwarded-Proto=https",
+          "status": "ok",
+          "group": "tls",
+          "title": "TLS termination",
+          "seconds": 0.04
+        },
+        "tls13": {
+          "detail": "TLSv1.3 TLS_AES_256_GCM_SHA384",
+          "status": "ok",
+          "group": "tls",
+          "title": "TLS 1.3 negotiated",
+          "seconds": 0.0
+        },
+        "tls_legacy_refused": {
+          "detail": "800798FF1F7F0000:error:0A00042E:SSL routines:ssl3_read_bytes:tlsv1 alert protocol version:../ssl/record/rec_layer_s3.c:918:SSL alert number 70\nProtocol: TLSv1.1\n    Protocol  : TLSv1.1",
+          "status": "ok",
+          "group": "tls",
+          "title": "TLS 1.0/1.1 refused",
+          "seconds": 0.57
+        },
+        "mtls_client_cert": {
+          "detail": "without cert: ReadError: [SSL: TLSV13_ALERT_CERTIFICATE_REQUIRED] tlsv13 alert certificate req; with cert: 200; forwarded: {'X-Client-Cert-Org': 'pxlab'}",
+          "cert_headers": {
+            "X-Client-Cert-Org": "pxlab"
+          },
+          "status": "ok",
+          "group": "tls",
+          "title": "Mutual TLS (client certificate required)",
+          "seconds": 0.02
+        },
+        "sni_multi_cert": {
+          "detail": "app.lab -> CN = app.lab, O = pxlab; b.lab -> CN = b.lab, O = pxlab",
+          "status": "ok",
+          "group": "tls",
+          "title": "Multiple certificates selected by SNI",
+          "seconds": 0.08
+        },
+        "acme_auto_cert": {
+          "status": "unsupported",
+          "detail": "no ACME client (certificates come from files / callbacks)",
+          "group": "tls",
+          "title": "Automatic certificate via ACME (Pebble)",
+          "seconds": 0
+        },
+        "cache_hit": {
+          "detail": "origin app1#1 -> app1#1; X-Cache: MISS -> HIT age=0",
+          "status": "ok",
+          "group": "caching",
+          "title": "Response caching",
+          "seconds": 0.01
+        },
+        "cache_purge": {
+          "status": "unsupported",
+          "detail": "pingora-cache serves PURGE only for storages implementing purge; MemCache does in principle but the lab keeps it out of scope",
+          "group": "caching",
+          "title": "Cache purge",
+          "seconds": 0
+        },
+        "cache_stale_on_error": {
+          "status": "unsupported",
+          "detail": "stale-if-error is wired through should_serve_stale(); the in-memory cache expires objects before the lab's 2 s window",
+          "group": "caching",
+          "title": "Serve stale on upstream error",
+          "seconds": 0
+        },
+        "compress_gzip": {
+          "detail": "Content-Encoding=gzip 609 bytes (65536 uncompressed)",
+          "bytes": 609,
+          "status": "ok",
+          "group": "compression",
+          "title": "gzip compression",
+          "seconds": 0.0
+        },
+        "compress_brotli": {
+          "status": "unsupported",
+          "detail": "pingora's compression module in this build negotiates gzip/zstd (brotli support is feature-gated)",
+          "group": "compression",
+          "title": "Brotli compression",
+          "seconds": 0
+        },
+        "compress_zstd": {
+          "detail": "Content-Encoding=zstd 99 bytes (65536 uncompressed)",
+          "bytes": 99,
+          "status": "ok",
+          "group": "compression",
+          "title": "Zstandard compression",
+          "seconds": 0.0
+        },
+        "xff_headers": {
+          "detail": "XFF=10.77.0.1 Proto=http Host=app.lab X-Real-IP=10.77.0.1",
+          "status": "ok",
+          "group": "headers",
+          "title": "X-Forwarded-* headers",
+          "seconds": 0.0
+        },
+        "forwarded_rfc7239": {
+          "detail": "Forwarded='for=10.77.0.1;proto=http;host=app.lab'",
+          "status": "ok",
+          "group": "headers",
+          "title": "RFC 7239 Forwarded header",
+          "seconds": 0.0
+        },
+        "header_add_remove": {
+          "detail": "X-Lab-Proxy=pingora X-Powered-By=removed Server=pingora",
+          "status": "ok",
+          "group": "headers",
+          "title": "Header manipulation",
+          "seconds": 0.0
+        },
+        "request_id": {
+          "detail": "'cf72452e-6150-4d0d-9f3a-5a9dce0d2eb6' / '23924bf1-8cce-4be3-8d5c-239db894bda1'",
+          "status": "ok",
+          "group": "headers",
+          "title": "Request ID generation",
+          "seconds": 0.0
+        },
+        "rate_limit": {
+          "detail": "codes={200: 10, 429: 30}",
+          "rejected": 30,
+          "status": "ok",
+          "group": "security",
+          "title": "Request rate limiting",
+          "seconds": 0.07
+        },
+        "connection_limit": {
+          "detail": "codes={200: 3, 429: 9}",
+          "rejected": 9,
+          "status": "ok",
+          "group": "security",
+          "title": "Concurrent connection limit",
+          "seconds": 1.01
+        },
+        "ip_allow_deny": {
+          "detail": "/allowed=200 /denied=403",
+          "status": "ok",
+          "group": "security",
+          "title": "IP allow / deny lists",
+          "seconds": 0.01
+        },
+        "basic_auth": {
+          "detail": "no creds=401 (Basic realm=\"pxlab\") creds=200",
+          "status": "ok",
+          "group": "security",
+          "title": "HTTP basic authentication",
+          "seconds": 0.0
+        },
+        "jwt_auth": {
+          "detail": "none=401 valid=200 bad-sig=401",
+          "status": "ok",
+          "group": "security",
+          "title": "JWT validation (HS256)",
+          "seconds": 0.01
+        },
+        "forward_auth": {
+          "status": "unsupported",
+          "detail": "no built-in subrequest to an authorizer (would be a hand-written upstream call)",
+          "group": "security",
+          "title": "External authorization (forward auth / auth_request / ext_authz)",
+          "seconds": 0
+        },
+        "cors": {
+          "detail": "204 ACAO=https://example.com methods=GET, POST, PUT, DELETE, OPTIONS",
+          "status": "ok",
+          "group": "security",
+          "title": "CORS preflight answered by the proxy",
+          "seconds": 0.0
+        },
+        "security_headers": {
+          "detail": "{'strict-transport-security': 'max-age=31536000; includeSubDomains', 'x-content-type-options': 'nosniff', 'x-frame-options': 'DENY', 'referrer-policy': 'strict-origin-when-cross-origin'}",
+          "status": "ok",
+          "group": "security",
+          "title": "Security response headers",
+          "seconds": 0.0
+        },
+        "body_size_limit": {
+          "detail": "2MiB=413 100KiB=200",
+          "status": "ok",
+          "group": "security",
+          "title": "Request body size limit",
+          "seconds": 0.01
+        },
+        "upstream_timeout": {
+          "detail": "502 after 2.00s",
+          "seconds": 2.0,
+          "status": "ok",
+          "group": "security",
+          "title": "Upstream read timeout"
+        },
+        "fault_injection": {
+          "detail": "503 share=0.19 codes={200: 81, 503: 19}",
+          "share": 0.19,
+          "status": "ok",
+          "group": "security",
+          "title": "Fault injection",
+          "seconds": 0.23
+        },
+        "bandwidth_limit": {
+          "status": "unsupported",
+          "detail": "no built-in bandwidth limiting (body filters are synchronous)",
+          "group": "security",
+          "title": "Bandwidth limiting",
+          "seconds": 0
+        },
+        "static_files": {
+          "detail": "200 '<!doctype html><title>pxlab static</title><p>pxlab static fi' x-instance=None",
+          "status": "ok",
+          "group": "operations",
+          "title": "Static file serving",
+          "seconds": 0.0
+        },
+        "custom_error_page": {
+          "detail": "503 X-Error-Page=custom body='<!doctype html><title>pxlab error</title><h1>Custom error pa'",
+          "status": "ok",
+          "group": "operations",
+          "title": "Custom error page",
+          "seconds": 0.0
+        },
+        "hot_reload": {
+          "detail": "reload rc=0 ''; then 200",
+          "status": "ok",
+          "group": "operations",
+          "title": "Configuration reload without restart",
+          "seconds": 2.09
+        },
+        "access_log_json": {
+          "detail": "json keys: ['cache', 'duration_ms', 'error', 'host', 'method', 'remote_addr', 'status', 'time', 'tries', 'upstream', 'uri']",
+          "status": "ok",
+          "group": "operations",
+          "title": "Structured (JSON) access log",
+          "seconds": 1.53
+        },
+        "metrics_prometheus": {
+          "detail": "200 261 samples e.g. pingora_http_request_duration_seconds_bucket{host=\"\",le=\"0.005\"} 3",
+          "status": "ok",
+          "group": "operations",
+          "title": "Prometheus metrics",
+          "seconds": 0.07
+        },
+        "admin_api": {
+          "detail": "GET / -> 200 '{\"outliers\":[],\"proxy\":\"pingora-lab\",\"requests_seen\":0,\"uptime_s\":2,\"version\":\"0'",
+          "status": "ok",
+          "group": "operations",
+          "title": "Admin / stats / runtime API",
+          "seconds": 0.05
+        },
+        "tracing_otel": {
+          "status": "unsupported",
+          "detail": "no OpenTelemetry integration in this binary",
+          "group": "operations",
+          "title": "Distributed tracing (OpenTelemetry -> Jaeger)",
+          "seconds": 0
+        },
+        "docker_label_discovery": {
+          "status": "unsupported",
+          "detail": "no Docker provider",
+          "group": "operations",
+          "title": "Service discovery from Docker labels",
+          "seconds": 0
+        }
+      },
+      "summary": {
+        "ok": 54,
+        "fail": 0,
+        "error": 0,
+        "unsupported": 15
+      },
+      "_seconds": 18.8
+    },
+    "load": {
+      "seconds_default": 15,
+      "scenarios": {
+        "h1_keepalive": {
+          "tool": "oha",
+          "cmd": "oha --no-tui --output-format json -w -H Host: app.lab -z 15s -c 64 http://proxy:8080/small",
+          "exit_code": 0,
+          "wall_s": 16.2,
+          "stderr_tail": "",
+          "rps": 25376.2,
+          "p50": 2.492,
+          "p90": 3.349,
+          "p99": 4.133,
+          "p999": 4.909,
+          "max": 18.584,
+          "mean": 2.515,
+          "requests": 380794,
+          "errors": 0,
+          "non2xx": 0,
+          "status": "ok",
+          "bytes_per_s": 2969020,
+          "seconds": 15.01,
+          "error_samples": {},
+          "raw": {
+            "summary": {
+              "successRate": 1.0,
+              "total": 15.005926676,
+              "slowest": 0.018583617,
+              "fastest": 0.000186632,
+              "average": 0.002515077566970653,
+              "requestsPerSec": 25376.24021640928,
+              "totalData": 44552898,
+              "sizePerRequest": 117,
+              "sizePerSec": 2969020.1053198855
+            },
+            "latencyPercentiles": {
+              "p10": 0.001711141,
+              "p25": 0.002069163,
+              "p50": 0.002491881,
+              "p75": 0.002934591,
+              "p90": 0.003349219,
+              "p95": 0.003610431,
+              "p99": 0.004132601,
+              "p99.9": 0.004909403,
+              "p99.99": 0.006606299
+            }
+          },
+          "proxy": {
+            "cpu_cores_avg": 3.943,
+            "cpu_limit_cores": 4,
+            "cpu_pct_of_limit": 98.6,
+            "mem_end_mb": 23.7,
+            "mem_peak_mb": 28.7,
+            "per_container": {
+              "pxlab-pingora": {
+                "cpu_cores_avg": 3.66,
+                "cpu_seconds": 59.17,
+                "cpuset": "0-3",
+                "mem_end_mb": 23.7,
+                "mem_start_mb": 18.5,
+                "mem_peak_mb": 28.7,
+                "window_s": 16.17
+              }
+            },
+            "cpu_us_per_request": 155.4,
+            "rps_per_core": 6436
+          },
+          "backends": {
+            "cpu_cores_avg": 3.773,
+            "cpu_limit_cores": 12
+          },
+          "loadgen": {
+            "cpu_cores_avg": 2.021,
+            "cpu_limit_cores": 8
+          },
+          "title": "HTTP/1.1 keep-alive, 64 connections, /small",
+          "metric": "rps",
+          "phase_seconds": 16.4
+        },
+        "h1_no_keepalive": {
+          "tool": "oha",
+          "cmd": "oha --no-tui --output-format json -w -H Host: app.lab -z 15s -c 64 --disable-keepalive http://proxy:8080/small",
+          "exit_code": 0,
+          "wall_s": 16.1,
+          "stderr_tail": "",
+          "rps": 4194.0,
+          "p50": 13.86,
+          "p90": 26.92,
+          "p99": 37.665,
+          "p999": 47.679,
+          "max": 63.826,
+          "mean": 15.242,
+          "requests": 62947,
+          "errors": 0,
+          "non2xx": 0,
+          "status": "ok",
+          "bytes_per_s": 501925,
+          "seconds": 15.01,
+          "error_samples": {},
+          "raw": {
+            "summary": {
+              "successRate": 1.0,
+              "total": 15.008917723,
+              "slowest": 0.063826329,
+              "fastest": 0.000638207,
+              "average": 0.01524244687179687,
+              "requestsPerSec": 4193.9732871970255,
+              "totalData": 7533353,
+              "sizePerRequest": 119,
+              "sizePerSec": 501925.13138077385
+            },
+            "latencyPercentiles": {
+              "p10": 0.004617747,
+              "p25": 0.006589824,
+              "p50": 0.01385981,
+              "p75": 0.022068639,
+              "p90": 0.026920429,
+              "p95": 0.030561895,
+              "p99": 0.037665134,
+              "p99.9": 0.047679132,
+              "p99.99": 0.057210809
+            }
+          },
+          "proxy": {
+            "cpu_cores_avg": 1.442,
+            "cpu_limit_cores": 4,
+            "cpu_pct_of_limit": 36.0,
+            "mem_end_mb": 26.6,
+            "mem_peak_mb": 46.5,
+            "per_container": {
+              "pxlab-pingora": {
+                "cpu_cores_avg": 1.34,
+                "cpu_seconds": 21.64,
+                "cpuset": "0-3",
+                "mem_end_mb": 26.6,
+                "mem_start_mb": 26.7,
+                "mem_peak_mb": 46.5,
+                "window_s": 16.15
+              }
+            },
+            "cpu_us_per_request": 343.8,
+            "rps_per_core": 2909
+          },
+          "backends": {
+            "cpu_cores_avg": 1.373,
+            "cpu_limit_cores": 12
+          },
+          "loadgen": {
+            "cpu_cores_avg": 7.561,
+            "cpu_limit_cores": 8
+          },
+          "title": "HTTP/1.1 new connection per request, 64 in flight",
+          "metric": "rps",
+          "phase_seconds": 16.4
+        },
+        "wrk_h1": {
+          "tool": "wrk",
+          "cmd": "wrk -t8 -c64 -d15s --latency -H Host: app.lab http://proxy:8080/small",
+          "exit_code": 0,
+          "wall_s": 16.1,
+          "stderr_tail": "",
+          "rps": 24902.45,
+          "p50": 2.54,
+          "p90": 3.42,
+          "p99": 4.23,
+          "max": 10.72,
+          "requests": 376012,
+          "errors": 0,
+          "non2xx": 0,
+          "status": "ok",
+          "bytes_per_s": 8615684,
+          "seconds": 15.1,
+          "raw": {
+            "text": "Running 15s test @ http://proxy:8080/small\n  8 threads and 64 connections\n  Thread Stats   Avg      Stdev     Max   +/- Stdev\n    Latency     2.55ms  682.97us  10.72ms   69.80%\n    Req/Sec     3.14k   374.52    12.19k    99.17%\n  Latency Distribution\n     50%    2.54ms\n     75%    2.99ms\n     90%    3.42ms\n     99%    4.23ms\n  376012 requests in 15.10s, 124.07MB read\nRequests/sec:  24902.45\nTransfer/sec:      8.22MB\n"
+          },
+          "mean": 2.55,
+          "proxy": {
+            "cpu_cores_avg": 3.937,
+            "cpu_limit_cores": 4,
+            "cpu_pct_of_limit": 98.4,
+            "mem_end_mb": 29.6,
+            "mem_peak_mb": 46.5,
+            "per_container": {
+              "pxlab-pingora": {
+                "cpu_cores_avg": 3.699,
+                "cpu_seconds": 59.47,
+                "cpuset": "0-3",
+                "mem_end_mb": 29.6,
+                "mem_start_mb": 27.4,
+                "mem_peak_mb": 46.5,
+                "window_s": 16.07
+              }
+            },
+            "cpu_us_per_request": 158.1,
+            "rps_per_core": 6326
+          },
+          "backends": {
+            "cpu_cores_avg": 3.875,
+            "cpu_limit_cores": 12
+          },
+          "loadgen": {
+            "cpu_cores_avg": 1.476,
+            "cpu_limit_cores": 8
+          },
+          "title": "wrk reference: 8 threads, 64 connections, /small",
+          "metric": "rps",
+          "phase_seconds": 16.3
+        },
+        "tls_h1": {
+          "tool": "oha",
+          "cmd": "oha --no-tui --output-format json -w -H Host: app.lab -z 15s -c 64 --insecure https://proxy:8443/small",
+          "exit_code": 0,
+          "wall_s": 15.9,
+          "stderr_tail": "",
+          "rps": 15417.1,
+          "p50": 4.09,
+          "p90": 5.5,
+          "p99": 6.783,
+          "p999": 8.043,
+          "max": 73.067,
+          "mean": 4.142,
+          "requests": 231366,
+          "errors": 0,
+          "non2xx": 0,
+          "status": "ok",
+          "bytes_per_s": 1848493,
+          "seconds": 15.01,
+          "error_samples": {},
+          "raw": {
+            "summary": {
+              "successRate": 1.0,
+              "total": 15.00711801,
+              "slowest": 0.073066709,
+              "fastest": 0.000363511,
+              "average": 0.004142016952313632,
+              "requestsPerSec": 15417.0840694282,
+              "totalData": 27740547,
+              "sizePerRequest": 119,
+              "sizePerSec": 1848492.6273995496
+            },
+            "latencyPercentiles": {
+              "p10": 0.002808908,
+              "p25": 0.003398422,
+              "p50": 0.004089802,
+              "p75": 0.004813741,
+              "p90": 0.00550032,
+              "p95": 0.005928633,
+              "p99": 0.006783096,
+              "p99.9": 0.008043461,
+              "p99.99": 0.067804151
+            }
+          },
+          "proxy": {
+            "cpu_cores_avg": 3.953,
+            "cpu_limit_cores": 4,
+            "cpu_pct_of_limit": 98.8,
+            "mem_end_mb": 32.4,
+            "mem_peak_mb": 46.5,
+            "per_container": {
+              "pxlab-pingora": {
+                "cpu_cores_avg": 3.722,
+                "cpu_seconds": 59.34,
+                "cpuset": "0-3",
+                "mem_end_mb": 32.4,
+                "mem_start_mb": 30.5,
+                "mem_peak_mb": 46.5,
+                "window_s": 15.94
+              }
+            },
+            "cpu_us_per_request": 256.4,
+            "rps_per_core": 3900
+          },
+          "backends": {
+            "cpu_cores_avg": 3.372,
+            "cpu_limit_cores": 12
+          },
+          "loadgen": {
+            "cpu_cores_avg": 2.312,
+            "cpu_limit_cores": 8
+          },
+          "title": "HTTPS HTTP/1.1 keep-alive, 64 connections",
+          "metric": "rps",
+          "phase_seconds": 16.2
+        },
+        "tls_h2": {
+          "tool": "oha",
+          "cmd": "oha --no-tui --output-format json -w --http2 -z 15s -c 16 -p 8 --insecure https://proxy:8443/small",
+          "exit_code": 0,
+          "wall_s": 16.1,
+          "stderr_tail": "",
+          "rps": 21474.0,
+          "p50": 5.8,
+          "p90": 8.082,
+          "p99": 10.166,
+          "p999": 11.708,
+          "max": 18.072,
+          "mean": 5.931,
+          "requests": 322296,
+          "errors": 0,
+          "non2xx": 0,
+          "status": "ok",
+          "bytes_per_s": 2575293,
+          "seconds": 15.01,
+          "error_samples": {},
+          "raw": {
+            "summary": {
+              "successRate": 1.0,
+              "total": 15.008687993,
+              "slowest": 0.018072222,
+              "fastest": 0.000678707,
+              "average": 0.005930804209481232,
+              "requestsPerSec": 21473.9622910622,
+              "totalData": 38651769,
+              "sizePerRequest": 119,
+              "sizePerSec": 2575292.991501126
+            },
+            "latencyPercentiles": {
+              "p10": 0.003976516,
+              "p25": 0.004785831,
+              "p50": 0.005800404,
+              "p75": 0.00694238,
+              "p90": 0.008081602,
+              "p95": 0.008815516,
+              "p99": 0.010166499,
+              "p99.9": 0.011708058,
+              "p99.99": 0.013242156
+            }
+          },
+          "proxy": {
+            "cpu_cores_avg": 3.915,
+            "cpu_limit_cores": 4,
+            "cpu_pct_of_limit": 97.9,
+            "mem_end_mb": 31.5,
+            "mem_peak_mb": 46.5,
+            "per_container": {
+              "pxlab-pingora": {
+                "cpu_cores_avg": 3.641,
+                "cpu_seconds": 58.78,
+                "cpuset": "0-3",
+                "mem_end_mb": 31.5,
+                "mem_start_mb": 32.5,
+                "mem_peak_mb": 46.5,
+                "window_s": 16.14
+              }
+            },
+            "cpu_us_per_request": 182.3,
+            "rps_per_core": 5485
+          },
+          "backends": {
+            "cpu_cores_avg": 3.953,
+            "cpu_limit_cores": 12
+          },
+          "loadgen": {
+            "cpu_cores_avg": 1.537,
+            "cpu_limit_cores": 8
+          },
+          "title": "HTTPS HTTP/2: 16 connections x 8 streams",
+          "metric": "rps",
+          "phase_seconds": 16.4
+        },
+        "h3": {
+          "status": "unsupported",
+          "detail": "no HTTP/3 in Pingora",
+          "title": "HTTP/3 (QUIC): 16 connections x 8 streams",
+          "tool": "h3load"
+        },
+        "large_1mb": {
+          "tool": "oha",
+          "cmd": "oha --no-tui --output-format json -w -H Host: app.lab -z 15s -c 32 http://proxy:8080/bin/1048576",
+          "exit_code": 0,
+          "wall_s": 15.6,
+          "stderr_tail": "",
+          "rps": 2826.9,
+          "p50": 11.173,
+          "p90": 15.389,
+          "p99": 19.473,
+          "p999": 23.142,
+          "max": 30.336,
+          "mean": 11.297,
+          "requests": 42440,
+          "errors": 0,
+          "non2xx": 0,
+          "status": "ok",
+          "bytes_per_s": 2964250126,
+          "seconds": 15.01,
+          "error_samples": {},
+          "raw": {
+            "summary": {
+              "successRate": 1.0,
+              "total": 15.012756531,
+              "slowest": 0.030336493,
+              "fastest": 0.001529936,
+              "average": 0.011296940379052713,
+              "requestsPerSec": 2826.929212657595,
+              "totalData": 44501565440,
+              "sizePerRequest": 1048576,
+              "sizePerSec": 2964250126.0916505
+            },
+            "latencyPercentiles": {
+              "p10": 0.00746979,
+              "p25": 0.009246428,
+              "p50": 0.011173383,
+              "p75": 0.01323913,
+              "p90": 0.015388778,
+              "p95": 0.016779047,
+              "p99": 0.019473073,
+              "p99.9": 0.023142026,
+              "p99.99": 0.026663693
+            }
+          },
+          "proxy": {
+            "cpu_cores_avg": 3.842,
+            "cpu_limit_cores": 4,
+            "cpu_pct_of_limit": 96.0,
+            "mem_end_mb": 28.3,
+            "mem_peak_mb": 69.7,
+            "per_container": {
+              "pxlab-pingora": {
+                "cpu_cores_avg": 3.687,
+                "cpu_seconds": 57.67,
+                "cpuset": "0-3",
+                "mem_end_mb": 28.3,
+                "mem_start_mb": 24.4,
+                "mem_peak_mb": 69.7,
+                "window_s": 15.64
+              }
+            },
+            "cpu_us_per_request": 1359.0,
+            "rps_per_core": 736
+          },
+          "backends": {
+            "cpu_cores_avg": 3.486,
+            "cpu_limit_cores": 12
+          },
+          "loadgen": {
+            "cpu_cores_avg": 2.406,
+            "cpu_limit_cores": 8
+          },
+          "title": "1 MiB responses, 32 connections (throughput MB/s)",
+          "metric": "bytes_per_s",
+          "phase_seconds": 15.9
+        },
+        "gzip_64k": {
+          "tool": "oha",
+          "cmd": "oha --no-tui --output-format json -w -H Host: app.lab -z 15s -c 64 -H Accept-Encoding: gzip http://proxy:8080/compressible",
+          "exit_code": 0,
+          "wall_s": 16.0,
+          "stderr_tail": "",
+          "rps": 15908.0,
+          "p50": 3.945,
+          "p90": 5.313,
+          "p99": 6.678,
+          "p999": 8.977,
+          "max": 41.284,
+          "mean": 4.013,
+          "requests": 238723,
+          "errors": 0,
+          "non2xx": 0,
+          "status": "ok",
+          "bytes_per_s": 1042548800,
+          "seconds": 15.01,
+          "error_samples": {},
+          "raw": {
+            "summary": {
+              "successRate": 1.0,
+              "total": 15.006444326,
+              "slowest": 0.04128387,
+              "fastest": 0.000389465,
+              "average": 0.00401323794177775,
+              "requestsPerSec": 15908.032230285968,
+              "totalData": 15644950528,
+              "sizePerRequest": 65536,
+              "sizePerSec": 1042548800.2440212
+            },
+            "latencyPercentiles": {
+              "p10": 0.002764896,
+              "p25": 0.003301668,
+              "p50": 0.003945099,
+              "p75": 0.004637712,
+              "p90": 0.00531263,
+              "p95": 0.005746219,
+              "p99": 0.006677794,
+              "p99.9": 0.00897747,
+              "p99.99": 0.030288995
+            }
+          },
+          "proxy": {
+            "cpu_cores_avg": 3.947,
+            "cpu_limit_cores": 4,
+            "cpu_pct_of_limit": 98.7,
+            "mem_end_mb": 30.4,
+            "mem_peak_mb": 69.7,
+            "per_container": {
+              "pxlab-pingora": {
+                "cpu_cores_avg": 3.712,
+                "cpu_seconds": 59.25,
+                "cpuset": "0-3",
+                "mem_end_mb": 30.4,
+                "mem_start_mb": 28.1,
+                "mem_peak_mb": 69.7,
+                "window_s": 15.96
+              }
+            },
+            "cpu_us_per_request": 248.1,
+            "rps_per_core": 4030
+          },
+          "backends": {
+            "cpu_cores_avg": 5.859,
+            "cpu_limit_cores": 12
+          },
+          "loadgen": {
+            "cpu_cores_avg": 2.286,
+            "cpu_limit_cores": 8
+          },
+          "title": "64 KiB text compressed by the proxy (gzip), 64 connections",
+          "metric": "rps",
+          "phase_seconds": 16.2
+        },
+        "cache_hit": {
+          "tool": "oha",
+          "cmd": "oha --no-tui --output-format json -w -H Host: app.lab -z 15s -c 64 http://proxy:8080/cacheable/load-7029e",
+          "exit_code": 0,
+          "wall_s": 16.2,
+          "stderr_tail": "",
+          "rps": 26860.3,
+          "p50": 2.363,
+          "p90": 3.468,
+          "p99": 4.426,
+          "p999": 5.451,
+          "max": 26.992,
+          "mean": 2.375,
+          "requests": 403050,
+          "errors": 0,
+          "non2xx": 0,
+          "status": "ok",
+          "bytes_per_s": 2632309,
+          "seconds": 15.01,
+          "error_samples": {},
+          "raw": {
+            "summary": {
+              "successRate": 1.0,
+              "total": 15.005416746,
+              "slowest": 0.026991963,
+              "fastest": 0.00015002,
+              "average": 0.00237483129408021,
+              "requestsPerSec": 26860.30030505092,
+              "totalData": 39498900,
+              "sizePerRequest": 98,
+              "sizePerSec": 2632309.4298949903
+            },
+            "latencyPercentiles": {
+              "p10": 0.001316585,
+              "p25": 0.001814147,
+              "p50": 0.002363253,
+              "p75": 0.002934907,
+              "p90": 0.00346806,
+              "p95": 0.003786626,
+              "p99": 0.004426336,
+              "p99.9": 0.005451001,
+              "p99.99": 0.00759003
+            }
+          },
+          "proxy": {
+            "cpu_cores_avg": 3.973,
+            "cpu_limit_cores": 4,
+            "cpu_pct_of_limit": 99.3,
+            "mem_end_mb": 31.6,
+            "mem_peak_mb": 88.3,
+            "per_container": {
+              "pxlab-pingora": {
+                "cpu_cores_avg": 3.674,
+                "cpu_seconds": 59.62,
+                "cpuset": "0-3",
+                "mem_end_mb": 31.6,
+                "mem_start_mb": 33.1,
+                "mem_peak_mb": 88.3,
+                "window_s": 16.23
+              }
+            },
+            "cpu_us_per_request": 147.9,
+            "rps_per_core": 6761
+          },
+          "backends": {
+            "cpu_cores_avg": 0.131,
+            "cpu_limit_cores": 12
+          },
+          "loadgen": {
+            "cpu_cores_avg": 3.491,
+            "cpu_limit_cores": 8
+          },
+          "title": "served from the proxy cache, 64 connections",
+          "metric": "rps",
+          "phase_seconds": 16.5
+        },
+        "ws_echo": {
+          "tool": "k6",
+          "cmd": "sh -c k6 run --quiet --vus 64 --duration 15s -e URL=ws://proxy:8080/ws -e HOST=app.lab -e MSGS=500 --summary-trend-stats 'avg,med,p(90),p(99),max' --summary-export=/tmp/k6.json /k6/ws.js >/dev/null 2>&1; echo __K6SUMMARY__; cat /tmp/k6.json",
+          "exit_code": 0,
+          "wall_s": 16.2,
+          "stderr_tail": "",
+          "rps": 81950.1,
+          "p50": 1,
+          "p90": 1,
+          "p99": 3,
+          "max": 14,
+          "mean": 0.7628092948717948,
+          "requests": 1248000,
+          "errors": 0,
+          "non2xx": 0,
+          "status": "ok",
+          "bytes_per_s": 0,
+          "seconds": 0,
+          "raw": {
+            "ws_connecting": {
+              "p(99)": 10.747548,
+              "max": 16.485301,
+              "avg": 1.826173559294874,
+              "med": 1.523756,
+              "p(90)": 2.1691195
+            },
+            "ws_session_duration": {
+              "avg": 389.33924376241924,
+              "med": 388.12251949999995,
+              "p(90)": 407.0987195,
+              "p(99)": 419.58276945,
+              "max": 435.436854
+            }
+          },
+          "proxy": {
+            "cpu_cores_avg": 3.796,
+            "cpu_limit_cores": 4,
+            "cpu_pct_of_limit": 94.9,
+            "mem_end_mb": 45.7,
+            "mem_peak_mb": 88.3,
+            "per_container": {
+              "pxlab-pingora": {
+                "cpu_cores_avg": 3.517,
+                "cpu_seconds": 56.95,
+                "cpuset": "0-3",
+                "mem_end_mb": 45.7,
+                "mem_start_mb": 32.1,
+                "mem_peak_mb": 88.3,
+                "window_s": 16.19
+              }
+            },
+            "cpu_us_per_request": 46.3,
+            "rps_per_core": 21588
+          },
+          "backends": {
+            "cpu_cores_avg": 4.7,
+            "cpu_limit_cores": 12
+          },
+          "loadgen": {
+            "cpu_cores_avg": 6.514,
+            "cpu_limit_cores": 8
+          },
+          "title": "WebSocket echo: 64 VUs x 500 messages (k6)",
+          "metric": "rps",
+          "phase_seconds": 16.5
+        },
+        "grpc_health": {
+          "tool": "fortio",
+          "cmd": "fortio load -grpc -health -cacert /certs/ca.crt -c 16 -s 8 -qps 0 -t 15s -json - -p 50,90,99,99.9 https://proxy:8443",
+          "exit_code": 0,
+          "wall_s": 15.9,
+          "stderr_tail": ", 8297\n> 0.025 <= 0.03 , 0.0275 , 99.97, 719\n> 0.03 <= 0.035 , 0.0325 , 100.00, 34\n> 0.035 <= 0.0358492 , 0.0354246 , 100.00, 2\n# target 50% 0.0136513\n# target 90% 0.0191312\n# target 99% 0.0246226\n# target 99.9% 0.0292898\nError cases : no data\nJitter: false\nHealth SERVING : 138131\nAll done 138131 calls (plus 16 warmup) 13.902 ms avg, 9203.2 qps\nSuccessfully wrote 3761 bytes of Json data to stdout\n",
+          "rps": 9203.2,
+          "p50": 13.651,
+          "p90": 19.131,
+          "p99": 24.623,
+          "p999": 29.29,
+          "max": 35.849,
+          "mean": 13.902,
+          "requests": 138131,
+          "errors": 0,
+          "non2xx": 0,
+          "status": "ok",
+          "bytes_per_s": 0,
+          "seconds": 15.01,
+          "requested_qps": "max",
+          "raw": {
+            "RetCodes": {
+              "SERVING": 138131
+            },
+            "Percentiles": {
+              "p50": 13.651,
+              "p90": 19.131,
+              "p99": 24.623,
+              "p999": 29.29
+            }
+          },
+          "proxy": {
+            "cpu_cores_avg": 2.996,
+            "cpu_limit_cores": 4,
+            "cpu_pct_of_limit": 74.9,
+            "mem_end_mb": 46.2,
+            "mem_peak_mb": 88.3,
+            "per_container": {
+              "pxlab-pingora": {
+                "cpu_cores_avg": 2.835,
+                "cpu_seconds": 44.97,
+                "cpuset": "0-3",
+                "mem_end_mb": 46.2,
+                "mem_start_mb": 47.3,
+                "mem_peak_mb": 88.3,
+                "window_s": 15.86
+              }
+            },
+            "cpu_us_per_request": 325.5,
+            "rps_per_core": 3072
+          },
+          "backends": {
+            "cpu_cores_avg": 3.003,
+            "cpu_limit_cores": 12
+          },
+          "loadgen": {
+            "cpu_cores_avg": 1.789,
+            "cpu_limit_cores": 8
+          },
+          "title": "gRPC Health/Check over TLS: 16 connections x 8 streams (fortio)",
+          "metric": "rps",
+          "phase_seconds": 16.1
+        },
+        "open_loop_5k": {
+          "tool": "fortio",
+          "cmd": "fortio load -qps 5000 -c 64 -t 15s -nocatchup -uniform -H Host: app.lab -json - -p 50,90,99,99.9 http://proxy:8080/small",
+          "exit_code": 0,
+          "wall_s": 15.7,
+          "stderr_tail": "orm: true, Jitter: false, Catchup allowed: false\nIP addresses distribution:\n10.77.0.2:8080: 64\nCode 200 : 74944 (100.0 %)\nResponse Header Sizes : count 74944 avg 229 +/- 0 min 229 max 229 sum 17162176\nResponse Body/Total Sizes : count 74944 avg 346 +/- 0 min 346 max 346 sum 25930624\nAll done 74944 calls (plus 64 warmup) 0.645 ms avg, 4995.4 qps\nSuccessfully wrote 4532 bytes of Json data to stdout\n",
+          "rps": 4995.4,
+          "p50": 0.603,
+          "p90": 0.939,
+          "p99": 1.675,
+          "p999": 2.364,
+          "max": 5.469,
+          "mean": 0.645,
+          "requests": 74944,
+          "errors": 0,
+          "non2xx": 0,
+          "status": "ok",
+          "bytes_per_s": 1728424,
+          "seconds": 15.0,
+          "requested_qps": "5000",
+          "raw": {
+            "RetCodes": {
+              "200": 74944
+            },
+            "Percentiles": {
+              "p50": 0.603,
+              "p90": 0.939,
+              "p99": 1.675,
+              "p999": 2.364
+            }
+          },
+          "proxy": {
+            "cpu_cores_avg": 2.077,
+            "cpu_limit_cores": 4,
+            "cpu_pct_of_limit": 51.9,
+            "mem_end_mb": 45.5,
+            "mem_peak_mb": 88.3,
+            "per_container": {
+              "pxlab-pingora": {
+                "cpu_cores_avg": 1.982,
+                "cpu_seconds": 31.17,
+                "cpuset": "0-3",
+                "mem_end_mb": 45.5,
+                "mem_start_mb": 47.8,
+                "mem_peak_mb": 88.3,
+                "window_s": 15.72
+              }
+            },
+            "cpu_us_per_request": 415.8,
+            "rps_per_core": 2405
+          },
+          "backends": {
+            "cpu_cores_avg": 1.9,
+            "cpu_limit_cores": 12
+          },
+          "loadgen": {
+            "cpu_cores_avg": 0.756,
+            "cpu_limit_cores": 8
+          },
+          "title": "open loop at exactly 5000 rps (64 conns): latency without coordinated omission",
+          "metric": "p99",
+          "phase_seconds": 16.0
+        },
+        "ratelimit_accuracy": {
+          "tool": "oha",
+          "cmd": "oha --no-tui --output-format json -w -H Host: app.lab -z 10s -c 8 -q 200 http://proxy:8080/limited",
+          "exit_code": 0,
+          "wall_s": 10.6,
+          "stderr_tail": "",
+          "rps": 200.1,
+          "p50": 0.331,
+          "p90": 0.381,
+          "p99": 1.123,
+          "p999": 1.266,
+          "max": 1.329,
+          "mean": 0.352,
+          "requests": 2001,
+          "errors": 0,
+          "non2xx": 1901,
+          "status": "ok",
+          "bytes_per_s": 6202,
+          "seconds": 10.0,
+          "error_samples": {},
+          "raw": {
+            "summary": {
+              "successRate": 1.0,
+              "total": 10.001457842,
+              "slowest": 0.001328596,
+              "fastest": 0.000135208,
+              "average": 0.0003520888190904553,
+              "requestsPerSec": 200.07083283369198,
+              "totalData": 62030,
+              "sizePerRequest": 30,
+              "sizePerSec": 6202.095832420747
+            },
+            "latencyPercentiles": {
+              "p10": 0.000260339,
+              "p25": 0.000302097,
+              "p50": 0.000330837,
+              "p75": 0.000350293,
+              "p90": 0.000381088,
+              "p95": 0.000450213,
+              "p99": 0.001122936,
+              "p99.9": 0.001265951,
+              "p99.99": 0.001328596
+            }
+          },
+          "proxy": {
+            "cpu_cores_avg": 0.078,
+            "cpu_limit_cores": 4,
+            "cpu_pct_of_limit": 2.0,
+            "mem_end_mb": 45.5,
+            "mem_peak_mb": 88.3,
+            "per_container": {
+              "pxlab-pingora": {
+                "cpu_cores_avg": 0.074,
+                "cpu_seconds": 0.78,
+                "cpuset": "0-3",
+                "mem_end_mb": 45.5,
+                "mem_start_mb": 46.6,
+                "mem_peak_mb": 88.3,
+                "window_s": 10.57
+              }
+            },
+            "cpu_us_per_request": 390.9,
+            "rps_per_core": 2558
+          },
+          "backends": {
+            "cpu_cores_avg": 0.137,
+            "cpu_limit_cores": 12
+          },
+          "loadgen": {
+            "cpu_cores_avg": 0.041,
+            "cpu_limit_cores": 8
+          },
+          "title": "/limited (10 r/s) hammered at 200 rps for 10 s: how many get through",
+          "metric": "status",
+          "phase_seconds": 10.8
+        },
+        "c10k": {
+          "tool": "oha",
+          "cmd": "oha --no-tui --output-format json -w -H Host: app.lab -z 20s -c 10000 http://proxy:8080/delay/500",
+          "exit_code": 0,
+          "wall_s": 22.6,
+          "stderr_tail": "",
+          "rps": 13669.6,
+          "p50": 709.771,
+          "p90": 861.475,
+          "p99": 1070.309,
+          "p999": 1306.488,
+          "max": 1514.821,
+          "mean": 705.332,
+          "requests": 286690,
+          "errors": 0,
+          "non2xx": 0,
+          "status": "ok",
+          "bytes_per_s": 5131669,
+          "seconds": 20.97,
+          "error_samples": {},
+          "raw": {
+            "summary": {
+              "successRate": 1.0,
+              "total": 20.972846539,
+              "slowest": 1.5148210720000002,
+              "fastest": 0.503120594,
+              "average": 0.7053322313313123,
+              "requestsPerSec": 13669.5798287031,
+              "totalData": 107625714,
+              "sizePerRequest": 375,
+              "sizePerSec": 5131669.36113631
+            },
+            "latencyPercentiles": {
+              "p10": 0.570349215,
+              "p25": 0.587574467,
+              "p50": 0.709771049,
+              "p75": 0.745929057,
+              "p90": 0.86147493,
+              "p95": 0.882837768,
+              "p99": 1.070309419,
+              "p99.9": 1.306487701,
+              "p99.99": 1.440221188
+            }
+          },
+          "proxy": {
+            "cpu_cores_avg": 3.893,
+            "cpu_limit_cores": 4,
+            "cpu_pct_of_limit": 97.3,
+            "mem_end_mb": 618.8,
+            "mem_peak_mb": 690.9,
+            "per_container": {
+              "pxlab-pingora": {
+                "cpu_cores_avg": 3.62,
+                "cpu_seconds": 81.62,
+                "cpuset": "0-3",
+                "mem_end_mb": 618.8,
+                "mem_start_mb": 45.8,
+                "mem_peak_mb": 690.9,
+                "window_s": 22.55
+              }
+            },
+            "cpu_us_per_request": 284.8,
+            "rps_per_core": 3512
+          },
+          "backends": {
+            "cpu_cores_avg": 3.707,
+            "cpu_limit_cores": 12
+          },
+          "loadgen": {
+            "cpu_cores_avg": 1.852,
+            "cpu_limit_cores": 8
+          },
+          "title": "10 000 concurrent connections holding /delay/500 for 20 s (memory per connection)",
+          "metric": "rps",
+          "phase_seconds": 22.8
+        }
+      },
+      "_seconds": 243.2
+    },
+    "chaos": {
+      "failover": {
+        "status": "ok",
+        "stop_at_s": 6.0,
+        "start_at_s": 14.4,
+        "load": {
+          "rps": 765.2,
+          "requests": 18389,
+          "errors": 1,
+          "non2xx": 1,
+          "status": {
+            "200": 18388,
+            "502": 1
+          },
+          "p50": 0.644,
+          "p99": 1.882,
+          "p999": 3840.275,
+          "max": 5004.544
+        },
+        "timeline": {
+          "requests": 574,
+          "failed": 0,
+          "codes": {
+            "200": 574
+          },
+          "instances": {
+            "app3": 214,
+            "app1": 228,
+            "app2": 132
+          },
+          "first_fail_s": null,
+          "last_fail_s": null,
+          "fail_window_s": 0.0,
+          "app2_last_seen_after_stop_s": 0.0
+        },
+        "app2_back_after_s": 3.1,
+        "detail": "load errors=1/18389 ({'200': 18388, '502': 1}); timeline failed=0/574 window=0.0s (first=Nones after stop@6.0s); app2 back after 3.1s"
+      },
+      "reload": {
+        "status": "ok",
+        "reload_rc": 0,
+        "reload_seconds": 2.09,
+        "reload_output": "",
+        "load": {
+          "rps": 17114.4,
+          "requests": 256776,
+          "errors": 37,
+          "non2xx": 0,
+          "status": {
+            "200": 256776
+          },
+          "p50": 3.674,
+          "p99": 6.354,
+          "max": 35.286,
+          "error_samples": {
+            "connection closed before message completed": 10,
+            "connection error": 21,
+            "operation was canceled": 6
+          }
+        },
+        "timeline": {
+          "requests": 328,
+          "failed": 0,
+          "codes": {
+            "200": 328
+          },
+          "instances": {
+            "app1": 115,
+            "app2": 103,
+            "app3": 110
+          },
+          "first_fail_s": null,
+          "last_fail_s": null,
+          "fail_window_s": 0.0
+        },
+        "detail": "reload rc=0 in 2.09s; load errors=37 non2xx=0 of 256776; timeline failed=0/328"
+      },
+      "_seconds": 45.1
+    }
+  },
+  "previous_run_id": "20260913-233040-e7df85",
+  "finished": "2026-09-13T20:34:15+00:00"
+}

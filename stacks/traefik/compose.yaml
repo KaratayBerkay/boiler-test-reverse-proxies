@@ -1,0 +1,43 @@
+# Traefik v3 (official image). Static config: traefik.yml; dynamic routing: dynamic/ (file provider, watched) + Docker labels.
+name: pxlab-traefik
+services:
+  proxy:
+    image: traefik:v3
+    container_name: pxlab-traefik
+    cpuset: "0-3"
+    command: ["--configFile=/etc/traefik/traefik.yml"]
+    environment:
+      LEGO_CA_CERTIFICATES: /certs/pebble-ca.pem     # trust Pebble's directory certificate (ACME)
+    volumes:
+      - ./traefik.yml:/etc/traefik/traefik.yml:ro
+      - ./dynamic:/etc/traefik/dynamic:ro
+      - ../../shared/certs:/certs:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro   # docker provider (label discovery)
+      - traefik-data:/data
+    ports:
+      - "18080:8080"
+      - "18443:8443"
+      - "18443:8443/udp"
+      - "18444:8444"
+      - "18445:8445"
+      - "18082:8082"
+      - "19000:9000"
+      - "19001:9001/udp"
+      - "19100:9100"
+      - "19101:9101"
+    ulimits:
+      nofile: { soft: 1048576, hard: 1048576 }
+    networks:
+      pxlab:
+        aliases: [proxy, app.lab, a.lab, b.lab, acme.lab, redirect.lab]
+    healthcheck:
+      test: ["CMD", "traefik", "healthcheck", "--configFile=/etc/traefik/traefik.yml"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+volumes:
+  traefik-data:
+networks:
+  pxlab:
+    external: true
+    name: pxlab

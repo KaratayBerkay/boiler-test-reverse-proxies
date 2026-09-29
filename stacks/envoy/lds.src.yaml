@@ -1,0 +1,385 @@
+# pxlab Envoy - LISTENERS source (file-based LDS). The HTTP filter chain, access log, tracing and HCM options are
+# written once and reused through YAML anchors + merge keys (<<) - which Envoy's own parser (yaml-cpp) does not
+# support, so gen.py expands this file into lds.yaml before start (`pre_up` in lab.yaml). Edit THIS file, not lds.yaml.
+version_info: "1"
+
+# ---------------------------------------------------------------------------------------------- shared pieces
+x-access-log: &access_log
+  - name: envoy.access_loggers.stdout
+    typed_config:
+      "@type": type.googleapis.com/envoy.extensions.access_loggers.stream.v3.StdoutAccessLog
+      log_format:
+        json_format:
+          time: "%START_TIME%"
+          client: "%DOWNSTREAM_REMOTE_ADDRESS_WITHOUT_PORT%"
+          method: "%REQ(:METHOD)%"
+          path: "%REQ(X-ENVOY-ORIGINAL-PATH?:PATH)%"
+          authority: "%REQ(:AUTHORITY)%"
+          protocol: "%PROTOCOL%"
+          status: "%RESPONSE_CODE%"
+          flags: "%RESPONSE_FLAGS%"
+          bytes_sent: "%BYTES_SENT%"
+          duration_ms: "%DURATION%"
+          upstream: "%UPSTREAM_HOST%"
+          upstream_ms: "%RESP(X-ENVOY-UPSTREAM-SERVICE-TIME)%"
+          request_id: "%REQ(X-REQUEST-ID)%"
+          ua: "%REQ(USER-AGENT)%"
+
+x-rds: &rds
+  route_config_name: pxlab
+  config_source:
+    resource_api_version: V3
+    path_config_source:
+      path: /etc/envoy/rds.yaml
+      watched_directory: { path: /etc/envoy }
+
+x-tracing: &tracing
+  provider:
+    name: envoy.tracers.opentelemetry
+    typed_config:
+      "@type": type.googleapis.com/envoy.config.trace.v3.OpenTelemetryConfig
+      grpc_service: { envoy_grpc: { cluster_name: jaeger }, timeout: 1s }
+      service_name: envoy
+  client_sampling: { value: 100 }             # requests that arrive with a sampled parent are traced
+  random_sampling: { value: 0.1 }             # 0.1 % of the rest (never the load paths in practice)
+  overall_sampling: { value: 100 }
+
+x-http-filters: &http_filters
+  - name: envoy.filters.http.fault                        # per-route abort (/fault)
+    typed_config:
+      "@type": type.googleapis.com/envoy.extensions.filters.http.fault.v3.HTTPFault
+  - name: envoy.filters.http.local_ratelimit              # per-route token bucket (/limited)
+    typed_config:
+      "@type": type.googleapis.com/envoy.extensions.filters.http.local_ratelimit.v3.LocalRateLimit
+      stat_prefix: http_local_rate_limiter
+  - name: envoy.filters.http.ext_authz                    # forward auth, enabled only for authority auth.lab (matcher)
+    typed_config:
+      "@type": type.googleapis.com/envoy.extensions.common.matching.v3.ExtensionWithMatcher
+      extension_config:
+        name: envoy.filters.http.ext_authz
+        typed_config:
+          "@type": type.googleapis.com/envoy.extensions.filters.http.ext_authz.v3.ExtAuthz
+          transport_api_version: V3
+          failure_mode_allow: false
+          status_on_error: { code: ServiceUnavailable }
+          allowed_headers:                                # headers forwarded to the auth service
+            patterns:
+              - { exact: x-auth-token, ignore_case: true }
+              - { exact: authorization, ignore_case: true }
+          http_service:
+            server_uri: { uri: http://app1:8080, cluster: auth, timeout: 2s }
+            path_prefix: /auth
+            authorization_response:
+              allowed_upstream_headers:
+                patterns:
+                  - { exact: x-auth-user, ignore_case: true }
+                  - { exact: x-auth-groups, ignore_case: true }
+              allowed_client_headers:
+                patterns: [{ exact: www-authenticate, ignore_case: true }]
+      xds_matcher:
+        matcher_list:
+          matchers:
+            - predicate:
+                not_matcher:
+                  single_predicate:
+                    input:
+                      name: authority
+                      typed_config:
+                        "@type": type.googleapis.com/envoy.type.matcher.v3.HttpRequestHeaderMatchInput
+                        header_name: ":authority"
+                    value_match: { prefix: auth.lab }
+              on_match:
+                action:
+                  name: skip
+                  typed_config:
+                    "@type": type.googleapis.com/envoy.extensions.filters.common.matcher.action.v3.SkipFilter
+  - name: envoy.filters.http.jwt_authn                    # HS256 via an inline JWKS; enforced only where a route asks (jwt.lab)
+    typed_config:
+      "@type": type.googleapis.com/envoy.extensions.filters.http.jwt_authn.v3.JwtAuthentication
+      providers:
+        pxlab:
+          issuer: pxlab
+          audiences: [pxlab]
+          local_jwks: { filename: /auth/jwt.jwks.json }
+          from_headers: [{ name: Authorization, value_prefix: "Bearer " }]
+          forward: true
+          claim_to_headers: [{ header_name: X-JWT-Sub, claim_name: sub }]
+      requirement_map:
+        pxlab: { provider_name: pxlab }
+  - name: envoy.filters.http.basic_auth                   # only for /basic (matcher)
+    typed_config:
+      "@type": type.googleapis.com/envoy.extensions.common.matching.v3.ExtensionWithMatcher
+      extension_config:
+        name: envoy.filters.http.basic_auth
+        typed_config:
+          "@type": type.googleapis.com/envoy.extensions.filters.http.basic_auth.v3.BasicAuth
+          users: { filename: /auth/htpasswd.sha1 }
+      xds_matcher:
+        matcher_list:
+          matchers:
+            - predicate:
+                not_matcher:
+                  single_predicate:
+                    input:
+                      name: path
+                      typed_config:
+                        "@type": type.googleapis.com/envoy.type.matcher.v3.HttpRequestHeaderMatchInput
+                        header_name: ":path"
+                    value_match: { exact: /basic }
+              on_match:
+                action:
+                  name: skip
+                  typed_config:
+                    "@type": type.googleapis.com/envoy.extensions.filters.common.matcher.action.v3.SkipFilter
+  - name: envoy.filters.http.rbac                         # IP allow/deny per route
+    typed_config:
+      "@type": type.googleapis.com/envoy.extensions.filters.http.rbac.v3.RBAC
+  - name: envoy.filters.http.cors
+    typed_config:
+      "@type": type.googleapis.com/envoy.extensions.filters.http.cors.v3.Cors
+  - name: envoy.filters.http.buffer                       # request body limit (per-route override to 1 MiB)
+    typed_config:
+      "@type": type.googleapis.com/envoy.extensions.filters.http.buffer.v3.Buffer
+      max_request_bytes: 67108864
+  - name: envoy.filters.http.bandwidth_limit              # disabled globally, enabled per route (/bw)
+    typed_config:
+      "@type": type.googleapis.com/envoy.extensions.filters.http.bandwidth_limit.v3.BandwidthLimit
+      stat_prefix: bw
+      enable_mode: DISABLED
+  - name: envoy.filters.http.lua                          # per-route scripts (custom error page)
+    typed_config:
+      "@type": type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua
+      default_source_code: { inline_string: "function envoy_on_request(h) end" }
+  # NOTE: envoy.filters.http.cache (SimpleHttpCache, alpha) is deliberately absent: in 1.39 the filter issues its own
+  # internal upstream request (async client) which bypasses route-level header mutations, redirects and direct
+  # responses for EVERY route - not only cacheable ones. Caching is declared unsupported in lab.yaml.
+  - name: envoy.filters.http.compressor.brotli
+    typed_config:
+      "@type": type.googleapis.com/envoy.extensions.filters.http.compressor.v3.Compressor
+      response_direction_config:
+        common_config: { min_content_length: 256, content_type: [text/plain, text/html, application/json, text/css, application/javascript] }
+      compressor_library:
+        name: brotli
+        typed_config: { "@type": type.googleapis.com/envoy.extensions.compression.brotli.compressor.v3.Brotli, quality: 4 }
+  - name: envoy.filters.http.compressor.zstd
+    typed_config:
+      "@type": type.googleapis.com/envoy.extensions.filters.http.compressor.v3.Compressor
+      response_direction_config:
+        common_config: { min_content_length: 256, content_type: [text/plain, text/html, application/json, text/css, application/javascript] }
+      compressor_library:
+        name: zstd
+        typed_config: { "@type": type.googleapis.com/envoy.extensions.compression.zstd.compressor.v3.Zstd, compression_level: 3 }
+  - name: envoy.filters.http.compressor.gzip
+    typed_config:
+      "@type": type.googleapis.com/envoy.extensions.filters.http.compressor.v3.Compressor
+      response_direction_config:
+        common_config: { min_content_length: 256, content_type: [text/plain, text/html, application/json, text/css, application/javascript] }
+      compressor_library:
+        name: gzip
+        typed_config: { "@type": type.googleapis.com/envoy.extensions.compression.gzip.compressor.v3.Gzip, compression_level: DEFAULT_COMPRESSION }
+  - name: envoy.filters.http.router
+    typed_config:
+      "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
+
+x-hcm-common: &hcm_common
+  stat_prefix: ingress
+  codec_type: AUTO                            # HTTP/1.1, HTTP/2 (TLS-ALPN) and h2c prior knowledge on plain listeners
+  use_remote_address: true
+  xff_num_trusted_hops: 0
+  generate_request_id: true
+  preserve_external_request_id: true
+  server_name: envoy
+  strip_any_host_port: true
+  normalize_path: true
+  merge_slashes: true
+  stream_idle_timeout: 300s
+  common_http_protocol_options: { idle_timeout: 75s, max_headers_count: 100 }
+  http2_protocol_options: { max_concurrent_streams: 256, initial_stream_window_size: 65536, initial_connection_window_size: 1048576 }
+  upgrade_configs:                            # WebSocket upgrades get their own (router-only) filter chain: the buffer /
+    - upgrade_type: websocket                 # bandwidth / compressor filters do not apply to upgraded connections
+      filters:
+        - name: envoy.filters.http.router
+          typed_config: { "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router }
+  tracing: *tracing
+  access_log: *access_log
+  rds: *rds
+  http_filters: *http_filters
+
+x-tls-app: &tls_app
+  common_tls_context:
+    alpn_protocols: [h2, http/1.1]
+    tls_params: { tls_minimum_protocol_version: TLSv1_2, tls_maximum_protocol_version: TLSv1_3 }
+    tls_certificates:
+      - { certificate_chain: { filename: /certs/app.lab.fullchain.crt }, private_key: { filename: /certs/app.lab.key } }
+
+resources:
+  # ------------------------------------------------------------------ plain HTTP (:8080 and :80), h1 + h2c
+  - "@type": type.googleapis.com/envoy.config.listener.v3.Listener
+    name: http
+    address: { socket_address: { address: 0.0.0.0, port_value: 8080 } }
+    additional_addresses: [{ address: { socket_address: { address: 0.0.0.0, port_value: 80 } } }]
+    per_connection_buffer_limit_bytes: 65536
+    filter_chains:
+      - filters:
+          - name: envoy.filters.network.http_connection_manager
+            typed_config:
+              "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
+              <<: *hcm_common
+  # ------------------------------------------------------------------ HTTPS (:8443): SNI selects the certificate, h2 via ALPN
+  - "@type": type.googleapis.com/envoy.config.listener.v3.Listener
+    name: https
+    address: { socket_address: { address: 0.0.0.0, port_value: 8443 } }
+    per_connection_buffer_limit_bytes: 65536
+    listener_filters:
+      - name: envoy.filters.listener.tls_inspector
+        typed_config: { "@type": type.googleapis.com/envoy.extensions.filters.listener.tls_inspector.v3.TlsInspector }
+    filter_chains:
+      - filter_chain_match: { server_names: [b.lab] }
+        transport_socket:
+          name: envoy.transport_sockets.tls
+          typed_config:
+            "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.DownstreamTlsContext
+            common_tls_context:
+              alpn_protocols: [h2, http/1.1]
+              tls_params: { tls_minimum_protocol_version: TLSv1_2 }
+              tls_certificates:
+                - { certificate_chain: { filename: /certs/b.lab.fullchain.crt }, private_key: { filename: /certs/b.lab.key } }
+        filters:
+          - name: envoy.filters.network.http_connection_manager
+            typed_config:
+              "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
+              <<: *hcm_common
+      - transport_socket:
+          name: envoy.transport_sockets.tls
+          typed_config:
+            "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.DownstreamTlsContext
+            <<: *tls_app
+        filters:
+          - name: envoy.filters.network.http_connection_manager
+            typed_config:
+              "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
+              <<: *hcm_common
+  # ------------------------------------------------------------------ HTTP/3 (QUIC on UDP :8443)
+  - "@type": type.googleapis.com/envoy.config.listener.v3.Listener
+    name: http3
+    address: { socket_address: { protocol: UDP, address: 0.0.0.0, port_value: 8443 } }
+    udp_listener_config:
+      quic_options: {}
+      downstream_socket_config: { prefer_gro: true }
+    filter_chains:
+      - transport_socket:
+          name: envoy.transport_sockets.quic
+          typed_config:
+            "@type": type.googleapis.com/envoy.extensions.transport_sockets.quic.v3.QuicDownstreamTransport
+            downstream_tls_context:
+              common_tls_context:
+                alpn_protocols: [h3]
+                tls_certificates:
+                  - { certificate_chain: { filename: /certs/app.lab.fullchain.crt }, private_key: { filename: /certs/app.lab.key } }
+        filters:
+          - name: envoy.filters.network.http_connection_manager
+            typed_config:
+              "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
+              <<: *hcm_common
+              codec_type: HTTP3
+              http3_protocol_options: {}
+  # ------------------------------------------------------------------ mTLS (:8444): client certificate required, XFCC forwarded
+  - "@type": type.googleapis.com/envoy.config.listener.v3.Listener
+    name: mtls
+    address: { socket_address: { address: 0.0.0.0, port_value: 8444 } }
+    filter_chains:
+      - transport_socket:
+          name: envoy.transport_sockets.tls
+          typed_config:
+            "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.DownstreamTlsContext
+            require_client_certificate: true
+            common_tls_context:
+              alpn_protocols: [h2, http/1.1]
+              tls_params: { tls_minimum_protocol_version: TLSv1_2 }
+              tls_certificates:
+                - { certificate_chain: { filename: /certs/app.lab.fullchain.crt }, private_key: { filename: /certs/app.lab.key } }
+              validation_context:
+                trusted_ca: { filename: /certs/ca.crt }
+        filters:
+          - name: envoy.filters.network.http_connection_manager
+            typed_config:
+              "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
+              <<: *hcm_common
+              forward_client_cert_details: SANITIZE_SET
+              set_current_client_cert_details: { subject: true }
+  # ------------------------------------------------------------------ PROXY protocol accepted from clients (:8082)
+  - "@type": type.googleapis.com/envoy.config.listener.v3.Listener
+    name: pp
+    address: { socket_address: { address: 0.0.0.0, port_value: 8082 } }
+    listener_filters:
+      - name: envoy.filters.listener.proxy_protocol
+        typed_config: { "@type": type.googleapis.com/envoy.extensions.filters.listener.proxy_protocol.v3.ProxyProtocol }
+    filter_chains:
+      - filters:
+          - name: envoy.filters.network.http_connection_manager
+            typed_config:
+              "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
+              <<: *hcm_common
+  # ------------------------------------------------------------------ TLS passthrough by SNI (:8445) - no decryption
+  - "@type": type.googleapis.com/envoy.config.listener.v3.Listener
+    name: passthrough
+    address: { socket_address: { address: 0.0.0.0, port_value: 8445 } }
+    listener_filters:
+      - name: envoy.filters.listener.tls_inspector
+        typed_config: { "@type": type.googleapis.com/envoy.extensions.filters.listener.tls_inspector.v3.TlsInspector }
+    filter_chains:
+      - filter_chain_match: { server_names: [passthrough.lab] }
+        filters:
+          - name: envoy.filters.network.tcp_proxy
+            typed_config: { "@type": type.googleapis.com/envoy.extensions.filters.network.tcp_proxy.v3.TcpProxy, stat_prefix: passthrough, cluster: app1_tls_raw }
+      - filters:
+          - name: envoy.filters.network.tcp_proxy
+            typed_config: { "@type": type.googleapis.com/envoy.extensions.filters.network.tcp_proxy.v3.TcpProxy, stat_prefix: passthrough_default, cluster: app1_tls_raw }
+  # ------------------------------------------------------------------ L4: TCP (:9000) and UDP (:9001)
+  - "@type": type.googleapis.com/envoy.config.listener.v3.Listener
+    name: tcp
+    address: { socket_address: { address: 0.0.0.0, port_value: 9000 } }
+    filter_chains:
+      - filters:
+          - name: envoy.filters.network.tcp_proxy
+            typed_config: { "@type": type.googleapis.com/envoy.extensions.filters.network.tcp_proxy.v3.TcpProxy, stat_prefix: tcp, cluster: app1_tcp }
+  - "@type": type.googleapis.com/envoy.config.listener.v3.Listener
+    name: udp
+    address: { socket_address: { protocol: UDP, address: 0.0.0.0, port_value: 9001 } }
+    udp_listener_config:
+      downstream_socket_config: { max_rx_datagram_size: 65535 }
+    listener_filters:
+      - name: envoy.filters.udp_listener.udp_proxy
+        typed_config:
+          "@type": type.googleapis.com/envoy.extensions.filters.udp.udp_proxy.v3.UdpProxyConfig
+          stat_prefix: udp
+          matcher:
+            on_no_match:
+              action:
+                name: route
+                typed_config:
+                  "@type": type.googleapis.com/envoy.extensions.filters.udp.udp_proxy.v3.Route
+                  cluster: app1_udp
+  # ------------------------------------------------------------------ metrics (:9100 -> admin /stats/prometheus)
+  - "@type": type.googleapis.com/envoy.config.listener.v3.Listener
+    name: metrics
+    address: { socket_address: { address: 0.0.0.0, port_value: 9100 } }
+    filter_chains:
+      - filters:
+          - name: envoy.filters.network.http_connection_manager
+            typed_config:
+              "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
+              stat_prefix: metrics
+              codec_type: AUTO
+              route_config:
+                virtual_hosts:
+                  - name: metrics
+                    domains: ["*"]
+                    routes:
+                      - match: { path: /metrics }
+                        route: { cluster: admin, prefix_rewrite: /stats/prometheus }
+                      - match: { path: /healthz }
+                        direct_response: { status: 200, body: { inline_string: "ok\n" } }
+              http_filters:
+                - name: envoy.filters.http.router
+                  typed_config: { "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router }

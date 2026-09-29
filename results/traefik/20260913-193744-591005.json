@@ -1,0 +1,44 @@
+{
+  "stack": "traefik",
+  "display": "Traefik v3",
+  "image": "traefik:v3",
+  "family": "go",
+  "category": "cloud-native edge router (Go): dynamic configuration from providers (Docker, Kubernetes, files)",
+  "run_id": "20260913-193744-591005",
+  "started": "2026-09-13T16:37:44+00:00",
+  "notes": "Official Traefik v3 image with the file provider (watched: edits are the reload) and the Docker provider (whoami.lab is discovered from labels). HTTP/3 on :8443, ACME against Pebble (LEGO_CA_CERTIFICATES), mirroring, weighted traffic split, p2c balancing, sticky cookies, forwardAuth, mTLS with passTLSClientCert, TCP/UDP/SNI-passthrough routers. No cache, no JWT, no request-id, no Forwarded header, no file serving in the open-source edition.",
+  "docs": [
+    "https://hub.docker.com/_/traefik",
+    "https://doc.traefik.io/traefik/routing/routers/",
+    "https://doc.traefik.io/traefik/middlewares/http/overview/",
+    "https://doc.traefik.io/traefik/https/acme/",
+    "https://doc.traefik.io/traefik/observability/tracing/overview/"
+  ],
+  "image_size": "252 MB",
+  "startup_s": null,
+  "version": "Version:      3.7.13",
+  "containers": [
+    "pxlab-traefik"
+  ],
+  "unsupported": {
+    "lb_hash_header": "no hash-based balancing (wrr / p2c / sticky cookies only)",
+    "lb_outlier_ejection": "no passive per-server ejection: the circuitBreaker middleware opens for the whole service, health checks probe /healthz only",
+    "proxy_protocol_upstream": "PROXY protocol towards upstreams exists only for TCP services (tcp.serversTransports.proxyProtocol), not HTTP",
+    "cache_hit": "no HTTP cache in Traefik OSS (Traefik Enterprise / plugins)",
+    "cache_purge": "no cache",
+    "cache_stale_on_error": "no cache",
+    "forwarded_rfc7239": "Traefik sets X-Forwarded-* only; no RFC 7239 Forwarded generation",
+    "request_id": "no request-id generation (a plugin or the upstream has to do it)",
+    "jwt_auth": "no JWT validation in OSS (ForwardAuth, a plugin such as traefik-jwt-plugin, or Traefik Enterprise)",
+    "fault_injection": "no fault-injection middleware",
+    "bandwidth_limit": "no bandwidth limiting (rateLimit is per request)",
+    "static_files": "Traefik has no file server; static content must come from an upstream"
+  },
+  "phases": {
+    "capabilities": {
+      "_error": "RuntimeError: proxy not ready after 60s: status 404",
+      "_seconds": 60.3
+    }
+  },
+  "finished": "2026-09-13T16:38:45+00:00"
+}

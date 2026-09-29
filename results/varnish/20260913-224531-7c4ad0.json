@@ -1,0 +1,1848 @@
+{
+  "stack": "varnish",
+  "display": "Varnish 8 + hitch",
+  "image": "varnish:8.0",
+  "family": "cache",
+  "category": "HTTP accelerator / caching reverse proxy (C, VCL-programmable) with hitch for TLS",
+  "run_id": "20260913-224531-7c4ad0",
+  "started": "2026-09-13T19:45:31+00:00",
+  "notes": "Official varnish:8.0 image (ships vmod_vsthrottle, digest, reqwest, saintmode, fileserver, uuid, cookie ...) behind hitch for TLS (PROXY v2 between them, h2 via ALPN, mTLS on :8444). VCL implements routing, shard hashing, cookie stickiness, saintmode outlier ejection, retries, grace (stale-on-error), PURGE, vsthrottle rate limiting, JWT verification with vmod_digest, forward auth and a TLS/h2 backend with vmod_reqwest, static files with vmod_fileserver and custom error pages. varnishncsa and a Prometheus exporter run as sidecars on the shared VSM directory; varnishreload swaps VCL without dropping connections. No HTTP/3, gRPC, L4, ACME or brotli.",
+  "docs": [
+    "https://hub.docker.com/_/varnish",
+    "https://varnish-cache.org/docs/8.0/users-guide/vcl.html",
+    "https://varnish-cache.org/docs/8.0/reference/vmod_directors.html",
+    "https://github.com/varnish/hitch/blob/master/docs/configuration.md",
+    "https://github.com/varnish/varnish-modules"
+  ],
+  "image_size": "458 MB",
+  "startup_s": 4.7,
+  "version": "varnishd (varnish-8.0.2 revision fb46a7bb50531f1a86e17173aa64116fd98a8b86)",
+  "containers": [
+    "pxlab-varnish",
+    "pxlab-hitch",
+    "pxlab-varnish-log",
+    "pxlab-varnish-exporter"
+  ],
+  "unsupported": {
+    "lb_least_conn": "vmod_directors has round_robin / random / fallback / hash / shard - no least-connections director",
+    "lb_mirror": "no request mirroring",
+    "h2_upstream": "Varnish speaks HTTP/1.1 to backends; h2 is only available via vmod_reqwest over TLS (used for tls.lab)",
+    "tcp_l4": "Varnish is HTTP-only",
+    "udp_l4": "Varnish is HTTP-only",
+    "tls_passthrough_sni": "no L4 passthrough (hitch terminates TLS)",
+    "http3": "no HTTP/3 in Varnish Cache or hitch (Varnish Enterprise / a QUIC terminator in front)",
+    "grpc": "no gRPC: Varnish cannot proxy HTTP/2 with trailers to backends",
+    "acme_auto_cert": "hitch has no ACME client (use certbot/lego and reload hitch)",
+    "connection_limit": "no per-client concurrency limit (vsthrottle is a request-rate limiter)",
+    "bandwidth_limit": "no bandwidth limiting in Varnish Cache (Enterprise has vmod_tcp/..)",
+    "compress_brotli": "Varnish compresses with gzip only",
+    "compress_zstd": "gzip only",
+    "tracing_otel": "no OpenTelemetry in Varnish Cache",
+    "docker_label_discovery": "no Docker provider"
+  },
+  "phases": {
+    "capabilities": {
+      "ready_s": 0.1,
+      "probes": {
+        "route_host": {
+          "detail": "a.lab -> app2 (X-Route=a), b.lab -> b1",
+          "status": "ok",
+          "group": "routing",
+          "title": "Host-based routing",
+          "seconds": 0.01
+        },
+        "route_path_prefix": {
+          "detail": "upstream path=/hello query=x=1 X-Route=api",
+          "status": "ok",
+          "group": "routing",
+          "title": "Path prefix route + strip prefix",
+          "seconds": 0.0
+        },
+        "route_path_regex": {
+          "detail": "path=/v2/things X-Route=versioned",
+          "status": "ok",
+          "group": "routing",
+          "title": "Regex path route",
+          "seconds": 0.0
+        },
+        "route_rewrite": {
+          "detail": "upstream path=/new/thing X-Route=rewritten",
+          "status": "ok",
+          "group": "routing",
+          "title": "URL rewrite (regex capture)",
+          "seconds": 0.0
+        },
+        "route_redirect": {
+          "detail": "301 Location=/landing",
+          "status": "ok",
+          "group": "routing",
+          "title": "Redirect issued by the proxy",
+          "seconds": 0.0
+        },
+        "route_header": {
+          "detail": "instance=canary",
+          "status": "ok",
+          "group": "routing",
+          "title": "Header-based routing",
+          "seconds": 0.0
+        },
+        "route_query": {
+          "detail": "instance=canary",
+          "status": "ok",
+          "group": "routing",
+          "title": "Query-parameter routing",
+          "seconds": 0.0
+        },
+        "route_method": {
+          "detail": "DELETE -> 405 (x-instance=None)",
+          "status": "ok",
+          "group": "routing",
+          "title": "Method-based rule",
+          "seconds": 0.0
+        },
+        "redirect_https": {
+          "detail": "301 Location=https://redirect.lab/x?q=1",
+          "status": "ok",
+          "group": "routing",
+          "title": "HTTP -> HTTPS redirect",
+          "seconds": 0.0
+        },
+        "lb_round_robin": {
+          "detail": {
+            "app3": 10,
+            "app1": 10,
+            "app2": 10
+          },
+          "status": "ok",
+          "group": "load-balancing",
+          "title": "Round-robin over 3 backends",
+          "seconds": 0.07
+        },
+        "lb_weighted": {
+          "detail": "app1 share=0.73 {'app1': 73, 'app2': 27}",
+          "share": 0.73,
+          "status": "ok",
+          "group": "load-balancing",
+          "title": "Weighted round-robin (3:1)",
+          "seconds": 0.25
+        },
+        "lb_least_conn": {
+          "status": "unsupported",
+          "detail": "vmod_directors has round_robin / random / fallback / hash / shard - no least-connections director",
+          "group": "load-balancing",
+          "title": "Least-connections",
+          "seconds": 0
+        },
+        "lb_hash_header": {
+          "detail": "u1 -> {'app2': 20}; 10 users -> {'app1': 18, 'app3': 3, 'app2': 9}",
+          "status": "ok",
+          "group": "load-balancing",
+          "title": "Consistent hashing on a header",
+          "seconds": 0.14
+        },
+        "lb_sticky_cookie": {
+          "detail": "cookie='lab_sticky=app3; Path=/; HttpOnly' first=app3 then={'app3': 12}",
+          "status": "ok",
+          "group": "load-balancing",
+          "title": "Cookie stickiness",
+          "seconds": 0.05
+        },
+        "lb_retry_dead_member": {
+          "detail": "codes={200: 30} max_ms=4",
+          "max_ms": 3.8,
+          "status": "ok",
+          "group": "load-balancing",
+          "title": "Retry on connect failure",
+          "seconds": 0.1
+        },
+        "lb_outlier_ejection": {
+          "detail": "first20={200: 20} last20={200: 40} flaky hits in last 20=0",
+          "errors_first20": 0,
+          "errors_last20": -20,
+          "flaky_hits_last20": 0,
+          "status": "ok",
+          "group": "load-balancing",
+          "title": "Passive health / outlier ejection",
+          "seconds": 1.71
+        },
+        "lb_active_health": {
+          "detail": "ejected after 2.1s; while unhealthy: {'app1': 15, 'app2': 15} app3 hits=0; re-admitted after 1.7s",
+          "eject_s": 2.1,
+          "readmit_s": 1.7,
+          "status": "ok",
+          "group": "load-balancing",
+          "title": "Active health checks",
+          "seconds": 4.03
+        },
+        "lb_canary_split": {
+          "detail": "canary share=0.090 {'app1': 68, 'app2': 52, 'canary': 18, 'app3': 62}",
+          "share": 0.09,
+          "status": "ok",
+          "group": "load-balancing",
+          "title": "Weighted traffic split (canary)",
+          "seconds": 0.63
+        },
+        "lb_mirror": {
+          "status": "unsupported",
+          "detail": "no request mirroring",
+          "group": "load-balancing",
+          "title": "Request mirroring / shadowing",
+          "seconds": 0
+        },
+        "lb_upstream_keepalive": {
+          "detail": "new upstream connections for 60 requests: {'app1': 2, 'app3': 2, 'app2': 2}",
+          "upstream_connections": 6,
+          "status": "ok",
+          "group": "load-balancing",
+          "title": "Upstream connection pooling",
+          "seconds": 0.42
+        },
+        "http2_tls": {
+          "detail": "HTTP/2 200 upstream proto=HTTP/1.1",
+          "status": "ok",
+          "group": "protocols",
+          "title": "HTTP/2 (TLS, ALPN)",
+          "seconds": 0.01
+        },
+        "h2c_frontend": {
+          "detail": "status=200 body=b'{\\n \"instance\": \"app1\",\\n \"pool\": \"app\",\\n '",
+          "status": "ok",
+          "group": "protocols",
+          "title": "HTTP/2 cleartext (prior knowledge) on :8080",
+          "seconds": 0.0
+        },
+        "http3": {
+          "status": "unsupported",
+          "detail": "no HTTP/3 in Varnish Cache or hitch (Varnish Enterprise / a QUIC terminator in front)",
+          "group": "protocols",
+          "title": "HTTP/3 (QUIC)",
+          "seconds": 0
+        },
+        "websocket": {
+          "detail": "text echo='hello' binary 4096=4096 instance=app1",
+          "status": "ok",
+          "group": "protocols",
+          "title": "WebSocket proxying",
+          "seconds": 0.03
+        },
+        "sse_streaming": {
+          "detail": "events=5 first=0.0s total=1.21s",
+          "status": "ok",
+          "group": "protocols",
+          "title": "Server-sent events (no response buffering)",
+          "seconds": 1.21
+        },
+        "grpc": {
+          "status": "unsupported",
+          "detail": "no gRPC: Varnish cannot proxy HTTP/2 with trailers to backends",
+          "group": "protocols",
+          "title": "gRPC proxying (h2 -> upstream h2c :9090)",
+          "seconds": 0
+        },
+        "h2_upstream": {
+          "status": "unsupported",
+          "detail": "Varnish speaks HTTP/1.1 to backends; h2 is only available via vmod_reqwest over TLS (used for tls.lab)",
+          "group": "protocols",
+          "title": "HTTP/2 to the upstream (h2c)",
+          "seconds": 0
+        },
+        "tls_upstream": {
+          "detail": "listener=tls tls={'version': 'TLS1.3', 'sni': 'app1', 'alpn': ''}",
+          "status": "ok",
+          "group": "protocols",
+          "title": "TLS re-encryption to the upstream (verified)",
+          "seconds": 0.01
+        },
+        "proxy_protocol_upstream": {
+          "detail": "listener=pp proxy_protocol={'version': 2, 'src_ip': '10.77.0.1', 'src_port': 42730, 'dst_ip': '10.77.0.2', 'dst_port': 8080, 'protocol': '0x11'}",
+          "status": "ok",
+          "group": "protocols",
+          "title": "PROXY protocol v2 to the upstream",
+          "seconds": 0.0
+        },
+        "proxy_protocol_accept": {
+          "detail": "X-Forwarded-For=203.0.113.9 remote_addr=10.77.0.2:36512",
+          "status": "ok",
+          "group": "protocols",
+          "title": "Accept PROXY protocol from clients (:8082)",
+          "seconds": 0.0
+        },
+        "tcp_l4": {
+          "status": "unsupported",
+          "detail": "Varnish is HTTP-only",
+          "group": "protocols",
+          "title": "TCP (L4) proxying",
+          "seconds": 0
+        },
+        "udp_l4": {
+          "status": "unsupported",
+          "detail": "Varnish is HTTP-only",
+          "group": "protocols",
+          "title": "UDP proxying",
+          "seconds": 0
+        },
+        "tls_passthrough_sni": {
+          "status": "unsupported",
+          "detail": "no L4 passthrough (hitch terminates TLS)",
+          "group": "protocols",
+          "title": "TLS passthrough by SNI (L4)",
+          "seconds": 0
+        },
+        "tls_termination": {
+          "detail": "200 cert=CN = app.lab, O = pxlab TLSv1.3 X-Forwarded-Proto=https",
+          "status": "ok",
+          "group": "tls",
+          "title": "TLS termination",
+          "seconds": 0.05
+        },
+        "tls13": {
+          "detail": "TLSv1.3 TLS_AES_256_GCM_SHA384",
+          "status": "ok",
+          "group": "tls",
+          "title": "TLS 1.3 negotiated",
+          "seconds": 0.01
+        },
+        "tls_legacy_refused": {
+          "detail": "8047BA5AB87A0000:error:8000006F:system library:BIO_connect:Connection refused:../crypto/bio/bio_sock2.c:183:calling connect()\n8047BA5AB87A0000:error:10000067:BIO routines:BIO_connect:connect error:../",
+          "status": "ok",
+          "group": "tls",
+          "title": "TLS 1.0/1.1 refused",
+          "seconds": 0.59
+        },
+        "mtls_client_cert": {
+          "detail": "without cert: ReadError: [SSL: TLSV13_ALERT_CERTIFICATE_REQUIRED] tlsv13 alert certificate req; with cert: 200; forwarded: {}",
+          "cert_headers": {},
+          "status": "ok",
+          "group": "tls",
+          "title": "Mutual TLS (client certificate required)",
+          "seconds": 0.03
+        },
+        "sni_multi_cert": {
+          "detail": "app.lab -> CN = app.lab, O = pxlab; b.lab -> CN = b.lab, O = pxlab",
+          "status": "ok",
+          "group": "tls",
+          "title": "Multiple certificates selected by SNI",
+          "seconds": 0.08
+        },
+        "acme_auto_cert": {
+          "status": "unsupported",
+          "detail": "hitch has no ACME client (use certbot/lego and reload hitch)",
+          "group": "tls",
+          "title": "Automatic certificate via ACME (Pebble)",
+          "seconds": 0
+        },
+        "cache_hit": {
+          "detail": "origin app3#1 -> app3#1; X-Cache: MISS -> HIT age=0",
+          "status": "ok",
+          "group": "caching",
+          "title": "Response caching",
+          "seconds": 0.01
+        },
+        "cache_purge": {
+          "detail": "purge -> 200; origin app1#1 -> app2#1",
+          "keepalive_quirk": false,
+          "status": "ok",
+          "group": "caching",
+          "title": "Cache purge",
+          "seconds": 0.01
+        },
+        "cache_stale_on_error": {
+          "detail": "first 200 origin=app3#1; after expiry with origin 503: 200 origin=app3#1 X-Cache=HIT",
+          "status": "ok",
+          "group": "caching",
+          "title": "Serve stale on upstream error",
+          "seconds": 2.61
+        },
+        "compress_gzip": {
+          "detail": "Content-Encoding=gzip 345 bytes (65536 uncompressed)",
+          "bytes": 345,
+          "status": "ok",
+          "group": "compression",
+          "title": "gzip compression",
+          "seconds": 0.01
+        },
+        "compress_brotli": {
+          "status": "unsupported",
+          "detail": "Varnish compresses with gzip only",
+          "group": "compression",
+          "title": "Brotli compression",
+          "seconds": 0
+        },
+        "compress_zstd": {
+          "status": "unsupported",
+          "detail": "gzip only",
+          "group": "compression",
+          "title": "Zstandard compression",
+          "seconds": 0
+        },
+        "xff_headers": {
+          "detail": "XFF=10.77.0.1 Proto=http Host=app.lab:18080 X-Real-IP=10.77.0.1",
+          "status": "ok",
+          "group": "headers",
+          "title": "X-Forwarded-* headers",
+          "seconds": 0.0
+        },
+        "forwarded_rfc7239": {
+          "detail": "Forwarded='for=10.77.0.1;proto=http;host=app.lab:18080'",
+          "status": "ok",
+          "group": "headers",
+          "title": "RFC 7239 Forwarded header",
+          "seconds": 0.0
+        },
+        "header_add_remove": {
+          "detail": "X-Lab-Proxy=varnish X-Powered-By=removed Server=varnish",
+          "status": "ok",
+          "group": "headers",
+          "title": "Header manipulation",
+          "seconds": 0.0
+        },
+        "request_id": {
+          "detail": "'cea3123b-6e1d-4856-bdab-f318f8bd7400' / '5d5eb2de-1df5-4e00-88a3-2df22975112e'",
+          "status": "ok",
+          "group": "headers",
+          "title": "Request ID generation",
+          "seconds": 0.01
+        },
+        "rate_limit": {
+          "detail": "codes={200: 10, 429: 30}",
+          "rejected": 30,
+          "status": "ok",
+          "group": "security",
+          "title": "Request rate limiting",
+          "seconds": 0.08
+        },
+        "connection_limit": {
+          "status": "unsupported",
+          "detail": "no per-client concurrency limit (vsthrottle is a request-rate limiter)",
+          "group": "security",
+          "title": "Concurrent connection limit",
+          "seconds": 0
+        },
+        "ip_allow_deny": {
+          "detail": "/allowed=200 /denied=403",
+          "status": "ok",
+          "group": "security",
+          "title": "IP allow / deny lists",
+          "seconds": 0.01
+        },
+        "basic_auth": {
+          "detail": "no creds=401 (Basic realm=\"pxlab\") creds=200",
+          "status": "ok",
+          "group": "security",
+          "title": "HTTP basic authentication",
+          "seconds": 0.01
+        },
+        "jwt_auth": {
+          "detail": "none=401 valid=200 bad-sig=401",
+          "status": "ok",
+          "group": "security",
+          "title": "JWT validation (HS256)",
+          "seconds": 0.01
+        },
+        "forward_auth": {
+          "detail": "none=401 token=200 X-Auth-User=alice",
+          "status": "ok",
+          "group": "security",
+          "title": "External authorization (forward auth / auth_request / ext_authz)",
+          "seconds": 0.01
+        },
+        "cors": {
+          "detail": "204 ACAO=https://example.com methods=GET, POST, PUT, DELETE, OPTIONS",
+          "status": "ok",
+          "group": "security",
+          "title": "CORS preflight answered by the proxy",
+          "seconds": 0.0
+        },
+        "security_headers": {
+          "detail": "{'strict-transport-security': 'max-age=31536000; includeSubDomains', 'x-content-type-options': 'nosniff', 'x-frame-options': 'DENY', 'referrer-policy': 'strict-origin-when-cross-origin'}",
+          "status": "ok",
+          "group": "security",
+          "title": "Security response headers",
+          "seconds": 0.0
+        },
+        "body_size_limit": {
+          "detail": "2MiB=413 100KiB=200",
+          "status": "ok",
+          "group": "security",
+          "title": "Request body size limit",
+          "seconds": 0.01
+        },
+        "upstream_timeout": {
+          "detail": "503 after 2.00s",
+          "seconds": 2.0,
+          "status": "ok",
+          "group": "security",
+          "title": "Upstream read timeout"
+        },
+        "fault_injection": {
+          "detail": "503 share=0.25 codes={200: 75, 503: 25}",
+          "share": 0.25,
+          "status": "ok",
+          "group": "security",
+          "title": "Fault injection",
+          "seconds": 0.25
+        },
+        "bandwidth_limit": {
+          "status": "unsupported",
+          "detail": "no bandwidth limiting in Varnish Cache (Enterprise has vmod_tcp/..)",
+          "group": "security",
+          "title": "Bandwidth limiting",
+          "seconds": 0
+        },
+        "static_files": {
+          "detail": "200 '<!doctype html><title>pxlab static</title><p>pxlab static fi' x-instance=None",
+          "status": "ok",
+          "group": "operations",
+          "title": "Static file serving",
+          "seconds": 0.0
+        },
+        "custom_error_page": {
+          "detail": "503 X-Error-Page=custom body='<!doctype html><title>pxlab error</title><h1>Custom error pa'",
+          "status": "ok",
+          "group": "operations",
+          "title": "Custom error page",
+          "seconds": 0.0
+        },
+        "hot_reload": {
+          "detail": "reload rc=0 \"VCL 'reload_20260913_194547_507' compiled\\nVCL 'reload_20260913_194547_507' now active\"; then 200",
+          "status": "ok",
+          "group": "operations",
+          "title": "Configuration reload without restart",
+          "seconds": 0.57
+        },
+        "access_log_json": {
+          "detail": "json keys: ['bytes', 'duration_s', 'handling', 'host', 'method', 'remote_addr', 'request_id', 'status', 'time', 'ua', 'uri']",
+          "status": "ok",
+          "group": "operations",
+          "title": "Structured (JSON) access log",
+          "seconds": 2.03
+        },
+        "metrics_prometheus": {
+          "detail": "200 552 samples e.g. varnish_backend_bereq_bodybytes{backend=\"app1\",server=\"unknown\"} 0",
+          "status": "ok",
+          "group": "operations",
+          "title": "Prometheus metrics",
+          "seconds": 0.07
+        },
+        "admin_api": {
+          "detail": "rc=0 'Child in state running'",
+          "status": "ok",
+          "group": "operations",
+          "title": "Admin / stats / runtime API",
+          "seconds": 0.09
+        },
+        "tracing_otel": {
+          "status": "unsupported",
+          "detail": "no OpenTelemetry in Varnish Cache",
+          "group": "operations",
+          "title": "Distributed tracing (OpenTelemetry -> Jaeger)",
+          "seconds": 0
+        },
+        "docker_label_discovery": {
+          "status": "unsupported",
+          "detail": "no Docker provider",
+          "group": "operations",
+          "title": "Service discovery from Docker labels",
+          "seconds": 0
+        }
+      },
+      "summary": {
+        "ok": 54,
+        "fail": 0,
+        "error": 0,
+        "unsupported": 15
+      },
+      "_seconds": 19.5
+    },
+    "load": {
+      "seconds_default": 15,
+      "scenarios": {
+        "h1_keepalive": {
+          "tool": "oha",
+          "cmd": "oha --no-tui --output-format json -w -H Host: app.lab -z 15s -c 64 http://proxy:8080/small",
+          "exit_code": 0,
+          "wall_s": 16.1,
+          "stderr_tail": "",
+          "rps": 10773.0,
+          "p50": 5.045,
+          "p90": 10.463,
+          "p99": 19.101,
+          "p999": 26.875,
+          "max": 47.132,
+          "mean": 5.928,
+          "requests": 161671,
+          "errors": 0,
+          "non2xx": 0,
+          "status": "ok",
+          "bytes_per_s": 1305940,
+          "seconds": 15.01,
+          "error_samples": {},
+          "raw": {
+            "summary": {
+              "successRate": 1.0,
+              "total": 15.007037792,
+              "slowest": 0.047132125,
+              "fastest": 0.000371912,
+              "average": 0.005928362624632801,
+              "requestsPerSec": 10773.01211876631,
+              "totalData": 19598296,
+              "sizePerRequest": 121,
+              "sizePerSec": 1305940.3375693185
+            },
+            "latencyPercentiles": {
+              "p10": 0.002566679,
+              "p25": 0.00363029,
+              "p50": 0.005045089,
+              "p75": 0.007104773,
+              "p90": 0.010463408,
+              "p95": 0.01312133,
+              "p99": 0.01910145,
+              "p99.9": 0.026874735,
+              "p99.99": 0.034340621
+            }
+          },
+          "proxy": {
+            "cpu_cores_avg": 3.953,
+            "cpu_limit_cores": 4,
+            "cpu_pct_of_limit": 98.8,
+            "mem_end_mb": 281.3,
+            "mem_peak_mb": 286.9,
+            "per_container": {
+              "pxlab-varnish": {
+                "cpu_cores_avg": 3.539,
+                "cpu_seconds": 57.15,
+                "cpuset": "0-3",
+                "mem_end_mb": 263.6,
+                "mem_start_mb": 168.5,
+                "mem_peak_mb": 264.5,
+                "window_s": 16.15
+              },
+              "pxlab-hitch": {
+                "cpu_cores_avg": 0.0,
+                "cpu_seconds": 0.0,
+                "cpuset": "0-3",
+                "mem_end_mb": 3.8,
+                "mem_start_mb": 3.8,
+                "mem_peak_mb": 5.7,
+                "window_s": 16.15
+              },
+              "pxlab-varnish-log": {
+                "cpu_cores_avg": 0.135,
+                "cpu_seconds": 2.19,
+                "cpuset": "0-3",
+                "mem_end_mb": 8.6,
+                "mem_start_mb": 2.2,
+                "mem_peak_mb": 9.0,
+                "window_s": 16.15
+              },
+              "pxlab-varnish-exporter": {
+                "cpu_cores_avg": 0.0,
+                "cpu_seconds": 0.0,
+                "cpuset": "0-3",
+                "mem_end_mb": 5.3,
+                "mem_start_mb": 5.3,
+                "mem_peak_mb": 7.7,
+                "window_s": 16.15
+              }
+            },
+            "cpu_us_per_request": 366.9,
+            "rps_per_core": 2725
+          },
+          "backends": {
+            "cpu_cores_avg": 3.127,
+            "cpu_limit_cores": 12
+          },
+          "loadgen": {
+            "cpu_cores_avg": 1.379,
+            "cpu_limit_cores": 8
+          },
+          "title": "HTTP/1.1 keep-alive, 64 connections, /small",
+          "metric": "rps",
+          "phase_seconds": 16.4
+        },
+        "h1_no_keepalive": {
+          "tool": "oha",
+          "cmd": "oha --no-tui --output-format json -w -H Host: app.lab -z 15s -c 64 --disable-keepalive http://proxy:8080/small",
+          "exit_code": 0,
+          "wall_s": 16.8,
+          "stderr_tail": "",
+          "rps": 4187.1,
+          "p50": 13.596,
+          "p90": 28.639,
+          "p99": 39.733,
+          "p999": 48.256,
+          "max": 62.705,
+          "mean": 15.266,
+          "requests": 62852,
+          "errors": 0,
+          "non2xx": 0,
+          "status": "ok",
+          "bytes_per_s": 506632,
+          "seconds": 15.01,
+          "error_samples": {},
+          "raw": {
+            "summary": {
+              "successRate": 1.0,
+              "total": 15.010765469,
+              "slowest": 0.062705419,
+              "fastest": 0.00068762,
+              "average": 0.015265622342375627,
+              "requestsPerSec": 4187.128240048848,
+              "totalData": 7604928,
+              "sizePerRequest": 120,
+              "sizePerSec": 506631.5915537804
+            },
+            "latencyPercentiles": {
+              "p10": 0.004350796,
+              "p25": 0.006684413,
+              "p50": 0.013595728,
+              "p75": 0.022669657,
+              "p90": 0.028638696,
+              "p95": 0.032310941,
+              "p99": 0.039733267,
+              "p99.9": 0.048255818,
+              "p99.99": 0.057966345
+            }
+          },
+          "proxy": {
+            "cpu_cores_avg": 2.087,
+            "cpu_limit_cores": 4,
+            "cpu_pct_of_limit": 52.2,
+            "mem_end_mb": 285.9,
+            "mem_peak_mb": 301.2,
+            "per_container": {
+              "pxlab-varnish": {
+                "cpu_cores_avg": 1.804,
+                "cpu_seconds": 30.22,
+                "cpuset": "0-3",
+                "mem_end_mb": 268.2,
+                "mem_start_mb": 263.6,
+                "mem_peak_mb": 278.8,
+                "window_s": 16.75
+              },
+              "pxlab-hitch": {
+                "cpu_cores_avg": 0.0,
+                "cpu_seconds": 0.0,
+                "cpuset": "0-3",
+                "mem_end_mb": 3.8,
+                "mem_start_mb": 3.8,
+                "mem_peak_mb": 5.7,
+                "window_s": 16.75
+              },
+              "pxlab-varnish-log": {
+                "cpu_cores_avg": 0.066,
+                "cpu_seconds": 1.1,
+                "cpuset": "0-3",
+                "mem_end_mb": 8.6,
+                "mem_start_mb": 8.6,
+                "mem_peak_mb": 9.0,
+                "window_s": 16.75
+              },
+              "pxlab-varnish-exporter": {
+                "cpu_cores_avg": 0.0,
+                "cpu_seconds": 0.0,
+                "cpuset": "0-3",
+                "mem_end_mb": 5.3,
+                "mem_start_mb": 5.3,
+                "mem_peak_mb": 7.7,
+                "window_s": 16.75
+              }
+            },
+            "cpu_us_per_request": 498.4,
+            "rps_per_core": 2006
+          },
+          "backends": {
+            "cpu_cores_avg": 1.425,
+            "cpu_limit_cores": 12
+          },
+          "loadgen": {
+            "cpu_cores_avg": 6.54,
+            "cpu_limit_cores": 8
+          },
+          "title": "HTTP/1.1 new connection per request, 64 in flight",
+          "metric": "rps",
+          "phase_seconds": 17.1
+        },
+        "wrk_h1": {
+          "tool": "wrk",
+          "cmd": "wrk -t8 -c64 -d15s --latency -H Host: app.lab http://proxy:8080/small",
+          "exit_code": 0,
+          "wall_s": 16.6,
+          "stderr_tail": "",
+          "rps": 10523.77,
+          "p50": 5.45,
+          "p90": 11.19,
+          "p99": 20.15,
+          "max": 41.65,
+          "requests": 158024,
+          "errors": 0,
+          "non2xx": 0,
+          "status": "ok",
+          "bytes_per_s": 4354872,
+          "seconds": 15.02,
+          "raw": {
+            "text": "Running 15s test @ http://proxy:8080/small\n  8 threads and 64 connections\n  Thread Stats   Avg      Stdev     Max   +/- Stdev\n    Latency     6.37ms    3.80ms  41.65ms   78.79%\n    Req/Sec     1.32k    81.50     1.62k    70.00%\n  Latency Distribution\n     50%    5.45ms\n     75%    7.71ms\n     90%   11.19ms\n     99%   20.15ms\n  158024 requests in 15.02s, 62.38MB read\nRequests/sec:  10523.77\nTransfer/sec:      4.15MB\n"
+          },
+          "mean": 6.37,
+          "proxy": {
+            "cpu_cores_avg": 3.937,
+            "cpu_limit_cores": 4,
+            "cpu_pct_of_limit": 98.4,
+            "mem_end_mb": 379.7,
+            "mem_peak_mb": 385.6,
+            "per_container": {
+              "pxlab-varnish": {
+                "cpu_cores_avg": 3.451,
+                "cpu_seconds": 57.14,
+                "cpuset": "0-3",
+                "mem_end_mb": 362.0,
+                "mem_start_mb": 269.2,
+                "mem_peak_mb": 363.2,
+                "window_s": 16.56
+              },
+              "pxlab-hitch": {
+                "cpu_cores_avg": 0.0,
+                "cpu_seconds": 0.0,
+                "cpuset": "0-3",
+                "mem_end_mb": 3.8,
+                "mem_start_mb": 3.8,
+                "mem_peak_mb": 5.7,
+                "window_s": 16.56
+              },
+              "pxlab-varnish-log": {
+                "cpu_cores_avg": 0.12,
+                "cpu_seconds": 1.99,
+                "cpuset": "0-3",
+                "mem_end_mb": 8.6,
+                "mem_start_mb": 8.6,
+                "mem_peak_mb": 9.0,
+                "window_s": 16.56
+              },
+              "pxlab-varnish-exporter": {
+                "cpu_cores_avg": 0.0,
+                "cpu_seconds": 0.0,
+                "cpuset": "0-3",
+                "mem_end_mb": 5.3,
+                "mem_start_mb": 5.3,
+                "mem_peak_mb": 7.7,
+                "window_s": 16.56
+              }
+            },
+            "cpu_us_per_request": 374.1,
+            "rps_per_core": 2673
+          },
+          "backends": {
+            "cpu_cores_avg": 3.023,
+            "cpu_limit_cores": 12
+          },
+          "loadgen": {
+            "cpu_cores_avg": 0.908,
+            "cpu_limit_cores": 8
+          },
+          "title": "wrk reference: 8 threads, 64 connections, /small",
+          "metric": "rps",
+          "phase_seconds": 16.9
+        },
+        "tls_h1": {
+          "tool": "oha",
+          "cmd": "oha --no-tui --output-format json -w -H Host: app.lab -z 15s -c 64 --insecure https://proxy:8443/small",
+          "exit_code": 0,
+          "wall_s": 15.6,
+          "stderr_tail": "",
+          "rps": 89166.8,
+          "p50": null,
+          "p90": null,
+          "p99": null,
+          "p999": null,
+          "max": null,
+          "mean": null,
+          "requests": 0,
+          "errors": 1337744,
+          "non2xx": 0,
+          "status": "ok",
+          "bytes_per_s": 0,
+          "seconds": 15.0,
+          "error_samples": {
+            "Connection refused (os error 111)": 1337744
+          },
+          "raw": {
+            "summary": {
+              "successRate": 0.0,
+              "total": 15.002720936,
+              "slowest": null,
+              "fastest": null,
+              "average": null,
+              "requestsPerSec": 89166.7588637203,
+              "totalData": 0,
+              "sizePerRequest": null,
+              "sizePerSec": 0.0
+            },
+            "latencyPercentiles": {
+              "p10": null,
+              "p25": null,
+              "p50": null,
+              "p75": null,
+              "p90": null,
+              "p95": null,
+              "p99": null,
+              "p99.9": null,
+              "p99.99": null
+            }
+          },
+          "proxy": {
+            "cpu_cores_avg": 0.032,
+            "cpu_limit_cores": 4,
+            "cpu_pct_of_limit": 0.8,
+            "mem_end_mb": 379.2,
+            "mem_peak_mb": 391.1,
+            "per_container": {
+              "pxlab-varnish": {
+                "cpu_cores_avg": 0.024,
+                "cpu_seconds": 0.37,
+                "cpuset": "0-3",
+                "mem_end_mb": 361.5,
+                "mem_start_mb": 362.9,
+                "mem_peak_mb": 368.7,
+                "window_s": 15.58
+              },
+              "pxlab-hitch": {
+                "cpu_cores_avg": 0.0,
+                "cpu_seconds": 0.0,
+                "cpuset": "0-3",
+                "mem_end_mb": 3.8,
+                "mem_start_mb": 3.8,
+                "mem_peak_mb": 5.7,
+                "window_s": 15.58
+              },
+              "pxlab-varnish-log": {
+                "cpu_cores_avg": 0.007,
+                "cpu_seconds": 0.11,
+                "cpuset": "0-3",
+                "mem_end_mb": 8.6,
+                "mem_start_mb": 8.6,
+                "mem_peak_mb": 9.0,
+                "window_s": 15.58
+              },
+              "pxlab-varnish-exporter": {
+                "cpu_cores_avg": 0.0,
+                "cpu_seconds": 0.0,
+                "cpuset": "0-3",
+                "mem_end_mb": 5.3,
+                "mem_start_mb": 5.3,
+                "mem_peak_mb": 7.7,
+                "window_s": 15.58
+              }
+            },
+            "cpu_us_per_request": 0.4,
+            "rps_per_core": null
+          },
+          "backends": {
+            "cpu_cores_avg": 0.127,
+            "cpu_limit_cores": 12
+          },
+          "loadgen": {
+            "cpu_cores_avg": 7.736,
+            "cpu_limit_cores": 8
+          },
+          "title": "HTTPS HTTP/1.1 keep-alive, 64 connections",
+          "metric": "rps",
+          "phase_seconds": 15.9
+        },
+        "tls_h2": {
+          "tool": "oha",
+          "cmd": "oha --no-tui --output-format json -w --http2 -z 15s -c 16 -p 8 --insecure https://proxy:8443/small",
+          "exit_code": 0,
+          "wall_s": 15.6,
+          "stderr_tail": "",
+          "rps": 92550.8,
+          "p50": null,
+          "p90": null,
+          "p99": null,
+          "p999": null,
+          "max": null,
+          "mean": null,
+          "requests": 0,
+          "errors": 1388679,
+          "non2xx": 0,
+          "status": "ok",
+          "bytes_per_s": 0,
+          "seconds": 15.0,
+          "error_samples": {
+            "Connection refused (os error 111)": 1388679
+          },
+          "raw": {
+            "summary": {
+              "successRate": 0.0,
+              "total": 15.00450931,
+              "slowest": null,
+              "fastest": null,
+              "average": null,
+              "requestsPerSec": 92550.77732362045,
+              "totalData": 0,
+              "sizePerRequest": null,
+              "sizePerSec": 0.0
+            },
+            "latencyPercentiles": {
+              "p10": null,
+              "p25": null,
+              "p50": null,
+              "p75": null,
+              "p90": null,
+              "p95": null,
+              "p99": null,
+              "p99.9": null,
+              "p99.99": null
+            }
+          },
+          "proxy": {
+            "cpu_cores_avg": 0.034,
+            "cpu_limit_cores": 4,
+            "cpu_pct_of_limit": 0.9,
+            "mem_end_mb": 379.4,
+            "mem_peak_mb": 391.1,
+            "per_container": {
+              "pxlab-varnish": {
+                "cpu_cores_avg": 0.026,
+                "cpu_seconds": 0.4,
+                "cpuset": "0-3",
+                "mem_end_mb": 361.7,
+                "mem_start_mb": 362.9,
+                "mem_peak_mb": 368.7,
+                "window_s": 15.58
+              },
+              "pxlab-hitch": {
+                "cpu_cores_avg": 0.0,
+                "cpu_seconds": 0.0,
+                "cpuset": "0-3",
+                "mem_end_mb": 3.8,
+                "mem_start_mb": 3.8,
+                "mem_peak_mb": 5.7,
+                "window_s": 15.58
+              },
+              "pxlab-varnish-log": {
+                "cpu_cores_avg": 0.007,
+                "cpu_seconds": 0.11,
+                "cpuset": "0-3",
+                "mem_end_mb": 8.6,
+                "mem_start_mb": 8.6,
+                "mem_peak_mb": 9.0,
+                "window_s": 15.58
+              },
+              "pxlab-varnish-exporter": {
+                "cpu_cores_avg": 0.0,
+                "cpu_seconds": 0.0,
+                "cpuset": "0-3",
+                "mem_end_mb": 5.3,
+                "mem_start_mb": 5.3,
+                "mem_peak_mb": 7.7,
+                "window_s": 15.58
+              }
+            },
+            "cpu_us_per_request": 0.4,
+            "rps_per_core": null
+          },
+          "backends": {
+            "cpu_cores_avg": 0.12,
+            "cpu_limit_cores": 12
+          },
+          "loadgen": {
+            "cpu_cores_avg": 7.737,
+            "cpu_limit_cores": 8
+          },
+          "title": "HTTPS HTTP/2: 16 connections x 8 streams",
+          "metric": "rps",
+          "phase_seconds": 15.9
+        },
+        "h3": {
+          "status": "unsupported",
+          "detail": "no HTTP/3 in Varnish Cache or hitch (Varnish Enterprise / a QUIC terminator in front)",
+          "title": "HTTP/3 (QUIC): 16 connections x 8 streams",
+          "tool": "h3load"
+        },
+        "large_1mb": {
+          "tool": "oha",
+          "cmd": "oha --no-tui --output-format json -w -H Host: app.lab -z 15s -c 32 http://proxy:8080/bin/1048576",
+          "exit_code": 0,
+          "wall_s": 16.0,
+          "stderr_tail": "",
+          "rps": 3603.0,
+          "p50": 8.478,
+          "p90": 12.927,
+          "p99": 19.524,
+          "p999": 27.331,
+          "max": 41.328,
+          "mean": 8.863,
+          "requests": 54087,
+          "errors": 0,
+          "non2xx": 0,
+          "status": "ok",
+          "bytes_per_s": 3778042684,
+          "seconds": 15.01,
+          "error_samples": {},
+          "raw": {
+            "summary": {
+              "successRate": 1.0,
+              "total": 15.011564148,
+              "slowest": 0.04132808,
+              "fastest": 0.00094287,
+              "average": 0.008863103560264082,
+              "requestsPerSec": 3603.0222744780426,
+              "totalData": 56714330112,
+              "sizePerRequest": 1048576,
+              "sizePerSec": 3778042684.483088
+            },
+            "latencyPercentiles": {
+              "p10": 0.005107496,
+              "p25": 0.00667483,
+              "p50": 0.008477936,
+              "p75": 0.010547478,
+              "p90": 0.012927364,
+              "p95": 0.014752924,
+              "p99": 0.019524057,
+              "p99.9": 0.027331324,
+              "p99.99": 0.036706141
+            }
+          },
+          "proxy": {
+            "cpu_cores_avg": 3.971,
+            "cpu_limit_cores": 4,
+            "cpu_pct_of_limit": 99.3,
+            "mem_end_mb": 411.4,
+            "mem_peak_mb": 451.3,
+            "per_container": {
+              "pxlab-varnish": {
+                "cpu_cores_avg": 3.661,
+                "cpu_seconds": 58.67,
+                "cpuset": "0-3",
+                "mem_end_mb": 393.7,
+                "mem_start_mb": 360.3,
+                "mem_peak_mb": 428.9,
+                "window_s": 16.03
+              },
+              "pxlab-hitch": {
+                "cpu_cores_avg": 0.0,
+                "cpu_seconds": 0.0,
+                "cpuset": "0-3",
+                "mem_end_mb": 3.8,
+                "mem_start_mb": 3.8,
+                "mem_peak_mb": 5.7,
+                "window_s": 16.03
+              },
+              "pxlab-varnish-log": {
+                "cpu_cores_avg": 0.057,
+                "cpu_seconds": 0.92,
+                "cpuset": "0-3",
+                "mem_end_mb": 8.6,
+                "mem_start_mb": 8.6,
+                "mem_peak_mb": 9.0,
+                "window_s": 16.03
+              },
+              "pxlab-varnish-exporter": {
+                "cpu_cores_avg": 0.0,
+                "cpu_seconds": 0.0,
+                "cpuset": "0-3",
+                "mem_end_mb": 5.3,
+                "mem_start_mb": 5.3,
+                "mem_peak_mb": 7.7,
+                "window_s": 16.03
+              }
+            },
+            "cpu_us_per_request": 1102.0,
+            "rps_per_core": 907
+          },
+          "backends": {
+            "cpu_cores_avg": 4.084,
+            "cpu_limit_cores": 12
+          },
+          "loadgen": {
+            "cpu_cores_avg": 2.333,
+            "cpu_limit_cores": 8
+          },
+          "title": "1 MiB responses, 32 connections (throughput MB/s)",
+          "metric": "bytes_per_s",
+          "phase_seconds": 16.4
+        },
+        "gzip_64k": {
+          "tool": "oha",
+          "cmd": "oha --no-tui --output-format json -w -H Host: app.lab -z 15s -c 64 -H Accept-Encoding: gzip http://proxy:8080/compressible",
+          "exit_code": 0,
+          "wall_s": 16.0,
+          "stderr_tail": "",
+          "rps": 2590.9,
+          "p50": 18.094,
+          "p90": 52.446,
+          "p99": 101.082,
+          "p999": 143.396,
+          "max": 210.54,
+          "mean": 24.656,
+          "requests": 38921,
+          "errors": 0,
+          "non2xx": 0,
+          "status": "ok",
+          "bytes_per_s": 893855,
+          "seconds": 15.02,
+          "error_samples": {},
+          "raw": {
+            "summary": {
+              "successRate": 1.0,
+              "total": 15.022278453,
+              "slowest": 0.21053961,
+              "fastest": 0.001529423,
+              "average": 0.024655748153798538,
+              "requestsPerSec": 2590.8852722822044,
+              "totalData": 13427745,
+              "sizePerRequest": 345,
+              "sizePerSec": 893855.4189373605
+            },
+            "latencyPercentiles": {
+              "p10": 0.005669097,
+              "p25": 0.010055598,
+              "p50": 0.018093655,
+              "p75": 0.032841835,
+              "p90": 0.052445982,
+              "p95": 0.066312797,
+              "p99": 0.101081765,
+              "p99.9": 0.143395818,
+              "p99.99": 0.171979882
+            }
+          },
+          "proxy": {
+            "cpu_cores_avg": 3.926,
+            "cpu_limit_cores": 4,
+            "cpu_pct_of_limit": 98.2,
+            "mem_end_mb": 388.9,
+            "mem_peak_mb": 451.3,
+            "per_container": {
+              "pxlab-varnish": {
+                "cpu_cores_avg": 3.649,
+                "cpu_seconds": 58.39,
+                "cpuset": "0-3",
+                "mem_end_mb": 370.9,
+                "mem_start_mb": 396.2,
+                "mem_peak_mb": 428.9,
+                "window_s": 16.0
+              },
+              "pxlab-hitch": {
+                "cpu_cores_avg": 0.0,
+                "cpu_seconds": 0.0,
+                "cpuset": "0-3",
+                "mem_end_mb": 3.8,
+                "mem_start_mb": 3.8,
+                "mem_peak_mb": 5.7,
+                "window_s": 16.0
+              },
+              "pxlab-varnish-log": {
+                "cpu_cores_avg": 0.037,
+                "cpu_seconds": 0.6,
+                "cpuset": "0-3",
+                "mem_end_mb": 8.6,
+                "mem_start_mb": 8.6,
+                "mem_peak_mb": 9.0,
+                "window_s": 16.0
+              },
+              "pxlab-varnish-exporter": {
+                "cpu_cores_avg": 0.0,
+                "cpu_seconds": 0.0,
+                "cpuset": "0-3",
+                "mem_end_mb": 5.6,
+                "mem_start_mb": 5.3,
+                "mem_peak_mb": 7.7,
+                "window_s": 16.0
+              }
+            },
+            "cpu_us_per_request": 1515.5,
+            "rps_per_core": 660
+          },
+          "backends": {
+            "cpu_cores_avg": 2.164,
+            "cpu_limit_cores": 12
+          },
+          "loadgen": {
+            "cpu_cores_avg": 0.546,
+            "cpu_limit_cores": 8
+          },
+          "title": "64 KiB text compressed by the proxy (gzip), 64 connections",
+          "metric": "rps",
+          "phase_seconds": 16.3
+        },
+        "cache_hit": {
+          "tool": "oha",
+          "cmd": "oha --no-tui --output-format json -w -H Host: app.lab -z 15s -c 64 http://proxy:8080/cacheable/load-6fd6f",
+          "exit_code": 0,
+          "wall_s": 16.8,
+          "stderr_tail": "",
+          "rps": 34387.3,
+          "p50": 1.898,
+          "p90": 2.81,
+          "p99": 5.322,
+          "p999": 8.315,
+          "max": 28.874,
+          "mean": 1.853,
+          "requests": 516001,
+          "errors": 0,
+          "non2xx": 0,
+          "status": "ok",
+          "bytes_per_s": 3301181,
+          "seconds": 15.01,
+          "error_samples": {},
+          "raw": {
+            "summary": {
+              "successRate": 1.0,
+              "total": 15.005568807,
+              "slowest": 0.028874028,
+              "fastest": 0.00011955,
+              "average": 0.0018533589793159142,
+              "requestsPerSec": 34387.300250776825,
+              "totalData": 49536096,
+              "sizePerRequest": 96,
+              "sizePerSec": 3301180.824074575
+            },
+            "latencyPercentiles": {
+              "p10": 0.000410345,
+              "p25": 0.001469,
+              "p50": 0.001898421,
+              "p75": 0.00216336,
+              "p90": 0.002809938,
+              "p95": 0.003371893,
+              "p99": 0.005322364,
+              "p99.9": 0.008315402,
+              "p99.99": 0.013205304
+            }
+          },
+          "proxy": {
+            "cpu_cores_avg": 3.989,
+            "cpu_limit_cores": 4,
+            "cpu_pct_of_limit": 99.7,
+            "mem_end_mb": 396.8,
+            "mem_peak_mb": 465.9,
+            "per_container": {
+              "pxlab-varnish": {
+                "cpu_cores_avg": 3.206,
+                "cpu_seconds": 53.93,
+                "cpuset": "0-3",
+                "mem_end_mb": 364.9,
+                "mem_start_mb": 372.3,
+                "mem_peak_mb": 428.9,
+                "window_s": 16.82
+              },
+              "pxlab-hitch": {
+                "cpu_cores_avg": 0.0,
+                "cpu_seconds": 0.0,
+                "cpuset": "0-3",
+                "mem_end_mb": 3.8,
+                "mem_start_mb": 3.8,
+                "mem_peak_mb": 5.7,
+                "window_s": 16.82
+              },
+              "pxlab-varnish-log": {
+                "cpu_cores_avg": 0.354,
+                "cpu_seconds": 5.96,
+                "cpuset": "0-3",
+                "mem_end_mb": 22.5,
+                "mem_start_mb": 8.6,
+                "mem_peak_mb": 23.6,
+                "window_s": 16.82
+              },
+              "pxlab-varnish-exporter": {
+                "cpu_cores_avg": 0.0,
+                "cpu_seconds": 0.0,
+                "cpuset": "0-3",
+                "mem_end_mb": 5.6,
+                "mem_start_mb": 5.6,
+                "mem_peak_mb": 7.7,
+                "window_s": 16.82
+              }
+            },
+            "cpu_us_per_request": 116.0,
+            "rps_per_core": 8620
+          },
+          "backends": {
+            "cpu_cores_avg": 0.132,
+            "cpu_limit_cores": 12
+          },
+          "loadgen": {
+            "cpu_cores_avg": 3.238,
+            "cpu_limit_cores": 8
+          },
+          "title": "served from the proxy cache, 64 connections",
+          "metric": "rps",
+          "phase_seconds": 17.2
+        },
+        "ws_echo": {
+          "tool": "k6",
+          "cmd": "sh -c k6 run --quiet --vus 64 --duration 15s -e URL=ws://proxy:8080/ws -e HOST=app.lab -e MSGS=500 --summary-trend-stats 'avg,med,p(90),p(99),max' --summary-export=/tmp/k6.json /k6/ws.js >/dev/null 2>&1; echo __K6SUMMARY__; cat /tmp/k6.json",
+          "exit_code": 0,
+          "wall_s": 16.3,
+          "stderr_tail": "",
+          "rps": 79714.6,
+          "p50": 1,
+          "p90": 1,
+          "p99": 3,
+          "max": 16,
+          "mean": 0.7777981878088962,
+          "requests": 1214000,
+          "errors": 0,
+          "non2xx": 0,
+          "status": "ok",
+          "bytes_per_s": 0,
+          "seconds": 0,
+          "raw": {
+            "ws_connecting": {
+              "avg": 4.148899408154864,
+              "med": 3.867016,
+              "p(90)": 5.5138128,
+              "p(99)": 18.69088228,
+              "max": 25.509648
+            },
+            "ws_session_duration": {
+              "avg": 399.6466697079904,
+              "med": 401.20007,
+              "p(90)": 428.32018089999997,
+              "p(99)": 452.72336227,
+              "max": 485.046404
+            }
+          },
+          "proxy": {
+            "cpu_cores_avg": 3.824,
+            "cpu_limit_cores": 4,
+            "cpu_pct_of_limit": 95.6,
+            "mem_end_mb": 397.5,
+            "mem_peak_mb": 465.9,
+            "per_container": {
+              "pxlab-varnish": {
+                "cpu_cores_avg": 3.516,
+                "cpu_seconds": 57.25,
+                "cpuset": "0-3",
+                "mem_end_mb": 365.6,
+                "mem_start_mb": 365.6,
+                "mem_peak_mb": 428.9,
+                "window_s": 16.28
+              },
+              "pxlab-hitch": {
+                "cpu_cores_avg": 0.0,
+                "cpu_seconds": 0.0,
+                "cpuset": "0-3",
+                "mem_end_mb": 3.8,
+                "mem_start_mb": 3.8,
+                "mem_peak_mb": 5.7,
+                "window_s": 16.28
+              },
+              "pxlab-varnish-log": {
+                "cpu_cores_avg": 0.007,
+                "cpu_seconds": 0.12,
+                "cpuset": "0-3",
+                "mem_end_mb": 22.5,
+                "mem_start_mb": 22.5,
+                "mem_peak_mb": 23.6,
+                "window_s": 16.28
+              },
+              "pxlab-varnish-exporter": {
+                "cpu_cores_avg": 0.0,
+                "cpu_seconds": 0.0,
+                "cpuset": "0-3",
+                "mem_end_mb": 5.6,
+                "mem_start_mb": 5.6,
+                "mem_peak_mb": 7.7,
+                "window_s": 16.28
+              }
+            },
+            "cpu_us_per_request": 48.0,
+            "rps_per_core": 20848
+          },
+          "backends": {
+            "cpu_cores_avg": 4.899,
+            "cpu_limit_cores": 12
+          },
+          "loadgen": {
+            "cpu_cores_avg": 6.703,
+            "cpu_limit_cores": 8
+          },
+          "title": "WebSocket echo: 64 VUs x 500 messages (k6)",
+          "metric": "rps",
+          "phase_seconds": 16.6
+        },
+        "grpc_health": {
+          "status": "unsupported",
+          "detail": "no gRPC: Varnish cannot proxy HTTP/2 with trailers to backends",
+          "title": "gRPC Health/Check over TLS: 16 connections x 8 streams (fortio)",
+          "tool": "fortio"
+        },
+        "open_loop_5k": {
+          "tool": "fortio",
+          "cmd": "fortio load -qps 5000 -c 64 -t 15s -nocatchup -uniform -H Host: app.lab -json - -p 50,90,99,99.9 http://proxy:8080/small",
+          "exit_code": 0,
+          "wall_s": 16.2,
+          "stderr_tail": "false, Catchup allowed: false\nIP addresses distribution:\n10.77.0.2:8080: 64\nCode 200 : 74944 (100.0 %)\nResponse Header Sizes : count 74944 avg 297.6183 +/- 3.518 min 292 max 301 sum 22304706\nResponse Body/Total Sizes : count 74944 avg 421.68622 +/- 9.973 min 409 max 431 sum 31602852\nAll done 74944 calls (plus 64 warmup) 0.743 ms avg, 4995.3 qps\nSuccessfully wrote 4443 bytes of Json data to stdout\n",
+          "rps": 4995.3,
+          "p50": 0.703,
+          "p90": 0.984,
+          "p99": 1.891,
+          "p999": 2.541,
+          "max": 3.674,
+          "mean": 0.743,
+          "requests": 74944,
+          "errors": 0,
+          "non2xx": 0,
+          "status": "ok",
+          "bytes_per_s": 2106444,
+          "seconds": 15.0,
+          "requested_qps": "5000",
+          "raw": {
+            "RetCodes": {
+              "200": 74944
+            },
+            "Percentiles": {
+              "p50": 0.703,
+              "p90": 0.984,
+              "p99": 1.891,
+              "p999": 2.541
+            }
+          },
+          "proxy": {
+            "cpu_cores_avg": 2.441,
+            "cpu_limit_cores": 4,
+            "cpu_pct_of_limit": 61.0,
+            "mem_end_mb": 439.9,
+            "mem_peak_mb": 465.9,
+            "per_container": {
+              "pxlab-varnish": {
+                "cpu_cores_avg": 2.188,
+                "cpu_seconds": 35.46,
+                "cpuset": "0-3",
+                "mem_end_mb": 408.2,
+                "mem_start_mb": 368.1,
+                "mem_peak_mb": 428.9,
+                "window_s": 16.21
+              },
+              "pxlab-hitch": {
+                "cpu_cores_avg": 0.0,
+                "cpu_seconds": 0.0,
+                "cpuset": "0-3",
+                "mem_end_mb": 3.8,
+                "mem_start_mb": 3.8,
+                "mem_peak_mb": 5.7,
+                "window_s": 16.21
+              },
+              "pxlab-varnish-log": {
+                "cpu_cores_avg": 0.071,
+                "cpu_seconds": 1.16,
+                "cpuset": "0-3",
+                "mem_end_mb": 22.3,
+                "mem_start_mb": 22.5,
+                "mem_peak_mb": 23.6,
+                "window_s": 16.21
+              },
+              "pxlab-varnish-exporter": {
+                "cpu_cores_avg": 0.0,
+                "cpu_seconds": 0.0,
+                "cpuset": "0-3",
+                "mem_end_mb": 5.6,
+                "mem_start_mb": 5.6,
+                "mem_peak_mb": 7.7,
+                "window_s": 16.21
+              }
+            },
+            "cpu_us_per_request": 488.7,
+            "rps_per_core": 2046
+          },
+          "backends": {
+            "cpu_cores_avg": 1.864,
+            "cpu_limit_cores": 12
+          },
+          "loadgen": {
+            "cpu_cores_avg": 0.785,
+            "cpu_limit_cores": 8
+          },
+          "title": "open loop at exactly 5000 rps (64 conns): latency without coordinated omission",
+          "metric": "p99",
+          "phase_seconds": 16.6
+        },
+        "ratelimit_accuracy": {
+          "tool": "oha",
+          "cmd": "oha --no-tui --output-format json -w -H Host: app.lab -z 10s -c 8 -q 200 http://proxy:8080/limited",
+          "exit_code": 0,
+          "wall_s": 11.2,
+          "stderr_tail": "",
+          "rps": 200.1,
+          "p50": 0.494,
+          "p90": 0.538,
+          "p99": 0.59,
+          "p999": 1.605,
+          "max": 2.176,
+          "mean": 0.472,
+          "requests": 2001,
+          "errors": 0,
+          "non2xx": 1991,
+          "status": "ok",
+          "bytes_per_s": 6765,
+          "seconds": 10.0,
+          "error_samples": {},
+          "raw": {
+            "summary": {
+              "successRate": 1.0,
+              "total": 10.001201286,
+              "slowest": 0.002176435,
+              "fastest": 0.000180024,
+              "average": 0.00047249978160919515,
+              "requestsPerSec": 200.07596515441233,
+              "totalData": 67656,
+              "sizePerRequest": 33,
+              "sizePerSec": 6764.787355565678
+            },
+            "latencyPercentiles": {
+              "p10": 0.000333694,
+              "p25": 0.000441657,
+              "p50": 0.000494116,
+              "p75": 0.000521334,
+              "p90": 0.000538364,
+              "p95": 0.000549813,
+              "p99": 0.000590246,
+              "p99.9": 0.001604725,
+              "p99.99": 0.002176435
+            }
+          },
+          "proxy": {
+            "cpu_cores_avg": 0.118,
+            "cpu_limit_cores": 4,
+            "cpu_pct_of_limit": 3.0,
+            "mem_end_mb": 436.2,
+            "mem_peak_mb": 465.9,
+            "per_container": {
+              "pxlab-varnish": {
+                "cpu_cores_avg": 0.091,
+                "cpu_seconds": 1.01,
+                "cpuset": "0-3",
+                "mem_end_mb": 404.5,
+                "mem_start_mb": 407.1,
+                "mem_peak_mb": 428.9,
+                "window_s": 11.16
+              },
+              "pxlab-hitch": {
+                "cpu_cores_avg": 0.0,
+                "cpu_seconds": 0.0,
+                "cpuset": "0-3",
+                "mem_end_mb": 3.8,
+                "mem_start_mb": 3.8,
+                "mem_peak_mb": 5.7,
+                "window_s": 11.16
+              },
+              "pxlab-varnish-log": {
+                "cpu_cores_avg": 0.015,
+                "cpu_seconds": 0.17,
+                "cpuset": "0-3",
+                "mem_end_mb": 22.3,
+                "mem_start_mb": 22.3,
+                "mem_peak_mb": 23.6,
+                "window_s": 11.16
+              },
+              "pxlab-varnish-exporter": {
+                "cpu_cores_avg": 0.0,
+                "cpu_seconds": 0.0,
+                "cpuset": "0-3",
+                "mem_end_mb": 5.6,
+                "mem_start_mb": 5.6,
+                "mem_peak_mb": 7.7,
+                "window_s": 11.16
+              }
+            },
+            "cpu_us_per_request": 591.2,
+            "rps_per_core": 1692
+          },
+          "backends": {
+            "cpu_cores_avg": 0.158,
+            "cpu_limit_cores": 12
+          },
+          "loadgen": {
+            "cpu_cores_avg": 0.043,
+            "cpu_limit_cores": 8
+          },
+          "title": "/limited (10 r/s) hammered at 200 rps for 10 s: how many get through",
+          "metric": "status",
+          "phase_seconds": 11.5
+        },
+        "c10k": {
+          "tool": "oha",
+          "cmd": "oha --no-tui --output-format json -w -H Host: app.lab -z 20s -c 10000 http://proxy:8080/delay/500",
+          "exit_code": 0,
+          "wall_s": 30.8,
+          "stderr_tail": "",
+          "rps": 5024.6,
+          "p50": 522.859,
+          "p90": 666.024,
+          "p99": 21079.107,
+          "p999": 21397.596,
+          "max": 29009.293,
+          "mean": 1402.476,
+          "requests": 146912,
+          "errors": 0,
+          "non2xx": 0,
+          "status": "ok",
+          "bytes_per_s": 2004729,
+          "seconds": 29.24,
+          "error_samples": {},
+          "raw": {
+            "summary": {
+              "successRate": 1.0,
+              "total": 29.238749494,
+              "slowest": 29.009293118,
+              "fastest": 0.501253723,
+              "average": 1.4024764208712865,
+              "requestsPerSec": 5024.565090588002,
+              "totalData": 58615760,
+              "sizePerRequest": 398,
+              "sizePerSec": 2004728.6910142438
+            },
+            "latencyPercentiles": {
+              "p10": 0.516106251,
+              "p25": 0.518751678,
+              "p50": 0.522859439,
+              "p75": 0.536716614,
+              "p90": 0.66602361,
+              "p95": 2.0944130420000002,
+              "p99": 21.079106661,
+              "p99.9": 21.397595517,
+              "p99.99": 21.611974966
+            }
+          },
+          "proxy": {
+            "cpu_cores_avg": 2.662,
+            "cpu_limit_cores": 4,
+            "cpu_pct_of_limit": 66.5,
+            "mem_end_mb": 3423.3,
+            "mem_peak_mb": 3443.3,
+            "per_container": {
+              "pxlab-varnish": {
+                "cpu_cores_avg": 2.461,
+                "cpu_seconds": 75.67,
+                "cpuset": "0-3",
+                "mem_end_mb": 3391.6,
+                "mem_start_mb": 406.8,
+                "mem_peak_mb": 3406.3,
+                "window_s": 30.75
+              },
+              "pxlab-hitch": {
+                "cpu_cores_avg": 0.0,
+                "cpu_seconds": 0.0,
+                "cpuset": "0-3",
+                "mem_end_mb": 3.8,
+                "mem_start_mb": 3.8,
+                "mem_peak_mb": 5.7,
+                "window_s": 30.75
+              },
+              "pxlab-varnish-log": {
+                "cpu_cores_avg": 0.07,
+                "cpu_seconds": 2.14,
+                "cpuset": "0-3",
+                "mem_end_mb": 22.3,
+                "mem_start_mb": 22.3,
+                "mem_peak_mb": 23.6,
+                "window_s": 30.75
+              },
+              "pxlab-varnish-exporter": {
+                "cpu_cores_avg": 0.0,
+                "cpu_seconds": 0.0,
+                "cpuset": "0-3",
+                "mem_end_mb": 5.6,
+                "mem_start_mb": 5.6,
+                "mem_peak_mb": 7.7,
+                "window_s": 30.75
+              }
+            },
+            "cpu_us_per_request": 529.7,
+            "rps_per_core": 1888
+          },
+          "backends": {
+            "cpu_cores_avg": 2.012,
+            "cpu_limit_cores": 12
+          },
+          "loadgen": {
+            "cpu_cores_avg": 0.886,
+            "cpu_limit_cores": 8
+          },
+          "title": "10 000 concurrent connections holding /delay/500 for 20 s (memory per connection)",
+          "metric": "rps",
+          "phase_seconds": 31.1
+        }
+      },
+      "_seconds": 236.1
+    },
+    "chaos": {
+      "failover": {
+        "status": "ok",
+        "stop_at_s": 6.0,
+        "start_at_s": 14.5,
+        "load": {
+          "rps": 750.1,
+          "requests": 18026,
+          "errors": 156,
+          "non2xx": 156,
+          "status": {
+            "200": 17870,
+            "503": 156
+          },
+          "p50": 1.448,
+          "p99": 3.019,
+          "p999": 3007.968,
+          "max": 3011.092
+        },
+        "timeline": {
+          "requests": 566,
+          "failed": 4,
+          "codes": {
+            "200": 562,
+            "503": 4
+          },
+          "instances": {
+            "app2": 130,
+            "app3": 203,
+            "app1": 229,
+            "?": 4
+          },
+          "first_fail_s": 6.06,
+          "last_fail_s": 12.32,
+          "fail_window_s": 6.26,
+          "app2_last_seen_after_stop_s": 10.1
+        },
+        "app2_back_after_s": 1.6,
+        "detail": "load errors=156/18026 ({'200': 17870, '503': 156}); timeline failed=4/566 window=6.26s (first=6.06s after stop@6.0s); app2 back after 1.6s"
+      },
+      "reload": {
+        "status": "ok",
+        "reload_rc": 0,
+        "reload_seconds": 1.75,
+        "reload_output": "VCL 'reload_20260913_195020_8937' compiled\nVCL 'reload_20260913_195020_8937' now active",
+        "load": {
+          "rps": 9555.8,
+          "requests": 143405,
+          "errors": 0,
+          "non2xx": 0,
+          "status": {
+            "200": 143405
+          },
+          "p50": 5.719,
+          "p99": 21.052,
+          "max": 58.993,
+          "error_samples": {}
+        },
+        "timeline": {
+          "requests": 331,
+          "failed": 0,
+          "codes": {
+            "200": 331
+          },
+          "instances": {
+            "app3": 103,
+            "app1": 117,
+            "app2": 111
+          },
+          "first_fail_s": null,
+          "last_fail_s": null,
+          "fail_window_s": 0.0
+        },
+        "detail": "reload rc=0 in 1.75s; load errors=0 non2xx=0 of 143405; timeline failed=0/331"
+      },
+      "_seconds": 44.8
+    }
+  },
+  "finished": "2026-09-13T19:50:32+00:00"
+}

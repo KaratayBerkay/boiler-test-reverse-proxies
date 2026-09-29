@@ -1,0 +1,44 @@
+{
+  "stack": "kong",
+  "display": "Kong Gateway 3.9",
+  "image": "kong:3.9",
+  "family": "api-gateway",
+  "category": "API gateway on OpenResty (Lua plugins): routes/services/upstreams/consumers/plugins, DB-less declarative config",
+  "run_id": "20260913-204732-0f8959",
+  "started": "2026-09-13T17:47:32+00:00",
+  "notes": "Kong Gateway OSS 3.9 in DB-less mode with the expressions router. Upstreams demonstrate round-robin / weighted / least-connections / consistent-hashing (header, cookie stickiness), active + passive health checks and retries; bundled plugins cover rate limiting, IP restriction, basic auth, JWT, CORS, request/response transformers, proxy-cache (+ admin purge), request size limiting, correlation-id, prometheus, opentelemetry and acme (Pebble); pre/post-function serverless plugins do redirects, 405, fault injection, static files and the custom error page. Stream routes give TCP, UDP and TLS passthrough.",
+  "docs": [
+    "https://hub.docker.com/_/kong",
+    "https://docs.konghq.com/gateway/latest/production/deployment-topologies/db-less-and-declarative-config/",
+    "https://docs.konghq.com/gateway/latest/key-concepts/routes/expressions/",
+    "https://docs.konghq.com/hub/",
+    "https://docs.konghq.com/gateway/latest/reference/configuration/"
+  ],
+  "image_size": "528 MB",
+  "startup_s": null,
+  "version": "Error response from daemon: container 7af650a767e83e640b4f534fc1b096e6c6672e48362af87646ea04990c2f6bf1 is not running",
+  "containers": [
+    "pxlab-kong"
+  ],
+  "unsupported": {
+    "lb_mirror": "no traffic mirroring in Kong OSS",
+    "h2_upstream": "HTTP/2 to upstreams only for gRPC services (protocol grpc/grpcs)",
+    "proxy_protocol_upstream": "Kong cannot send PROXY protocol to upstreams",
+    "mtls_client_cert": "mtls-auth is a Kong Enterprise plugin; nginx-level ssl_verify_client would apply to every TLS listener",
+    "http3": "no HTTP/3 in Kong Gateway 3.9 OSS",
+    "cache_stale_on_error": "proxy-cache has no stale-if-error mode",
+    "compress_brotli": "gzip only (nginx gzip injected through KONG_NGINX_PROXY_GZIP)",
+    "compress_zstd": "gzip only",
+    "connection_limit": "no per-client concurrency limit in OSS (rate-limiting is per request)",
+    "forward_auth": "no forward-auth plugin in Kong OSS (openid-connect is Enterprise; write a pre-function with lua-resty-http)",
+    "bandwidth_limit": "no bandwidth limiting (response-ratelimiting counts requests)",
+    "docker_label_discovery": "no Docker provider (Kong Ingress Controller does this on Kubernetes)"
+  },
+  "phases": {
+    "capabilities": {
+      "_error": "RuntimeError: proxy not ready after 60s: ConnectError: [Errno 111] Connection refused",
+      "_seconds": 60.2
+    }
+  },
+  "finished": "2026-09-13T17:48:33+00:00"
+}
