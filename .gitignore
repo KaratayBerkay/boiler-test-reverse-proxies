@@ -1,23 +1,19 @@
-# harness
-harness/.venv/
-__pycache__/
-*.pyc
-# run artifacts
+data/
+results/*/logs/
 results/logs/
-# generated configs (rebuilt by gen.py / pre_up)
-stacks/envoy/lds.yaml
-stacks/kong/kong.yml
-stacks/apisix/apisix.yaml
-stacks/ats/remap.config
-# build outputs
-stacks/pingora/target/
-stacks/pingora/Cargo.lock.bak
-# lab PKI and secrets (regenerate with `pxlab build` / `pxlab certs`)
 shared/certs/*.crt
 shared/certs/*.key
 shared/certs/*.pem
 shared/certs/*.srl
 shared/certs/*.csr
 shared/certs/*.cnf
-# scratch
+harness/.venv/
+**/__pycache__/
+*.pyc
+stacks/envoy/lds.yaml
+stacks/kong/kong.yml
+stacks/apisix/apisix.yaml
+stacks/ats/remap.config
+stacks/pingora/target/
+stacks/pingora/Cargo.lock.bak
 .DS_Store
