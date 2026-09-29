@@ -35,6 +35,12 @@ The same data as `docs/report.html`, one markdown file per tab:
 - [Chaos](docs/explanation-chaos.md) — failover and reload under load per proxy, with reload mechanisms and error samples.
 - [Per proxy](docs/explanation-per-proxy.md) — image, version, family, reload mechanism, notes, full capability list and full load results for each of the 12 proxies.
 
+## Results at a glance
+
+![Throughput](docs/charts/throughput.png)
+![Capabilities](docs/charts/capabilities.png)
+![Latency](docs/charts/latency.png)
+
 ## Layout
 ```
 stacks/<proxy>/compose.yaml + lab.yaml + config   one directory per proxy: compose file, native config, harness metadata
