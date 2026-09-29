@@ -26,6 +26,15 @@ narrative in [`docs/findings.md`](docs/findings.md), one annotated walkthrough p
 [`docs/configs/`](docs/configs/), the decision matrix in [`docs/proxy-matrix.md`](docs/proxy-matrix.md), and a
 self-contained interactive report `docs/report.html` (published copy: https://claude.ai/code/artifact/b99a6c3d-dcad-4b39-a267-902ac25deeb7; `reverse-proxies-report.html` at the repo root is the same page with the fonts embedded for offline use).
 
+## Report sections
+The same data as `docs/report.html`, one markdown file per tab:
+
+- [Overview](docs/explanation-overview.md) — one row per proxy: capabilities, h1/TLS-h2/h3/WS throughput, chaos errors, image size, startup.
+- [Capabilities](docs/explanation-capabilities.md) — the full 69-probe matrix in nine groups, with the ok/fail/error/unsupported reason for every proxy.
+- [Load](docs/explanation-load.md) — all 14 load scenarios: headline metric, p99, proxy CPU, µs/req and errors per proxy.
+- [Chaos](docs/explanation-chaos.md) — failover and reload under load per proxy, with reload mechanisms and error samples.
+- [Per proxy](docs/explanation-per-proxy.md) — image, version, family, reload mechanism, notes, full capability list and full load results for each of the 12 proxies.
+
 ## Layout
 ```
 stacks/<proxy>/compose.yaml + lab.yaml + config   one directory per proxy: compose file, native config, harness metadata
