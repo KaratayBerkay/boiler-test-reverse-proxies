@@ -1,5 +1,7 @@
 # reverse-proxies — the reverse-proxy lab
 
+**[View Interactive Report](https://karatayberkay.github.io/boiler-test-reverse-proxies/reverse-proxies-report.html)**
+
 A reproducible lab that stands up **twelve reverse proxies in Docker Compose** — NGINX, HAProxy, Caddy, Traefik,
 Envoy, Apache httpd, Varnish (+hitch), OpenResty, Kong, APISIX, a custom Pingora (Rust) proxy and Apache Traffic Server —
 each configured to the **same contract** ([`docs/contract.md`](docs/contract.md)) in front of the same Go backends, and
